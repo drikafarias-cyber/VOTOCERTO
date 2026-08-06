@@ -87,6 +87,7 @@ html, body { height: 100%; font-family: 'Sora', sans-serif; background: var(--bg
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-grid .span2 { grid-column: 1/-1; }
 .req { color: var(--danger); }
+.fg-hint { font-size: 10px; color: var(--text2); margin-top: 4px; opacity: 0.8; }
 
 .btn {
   padding: 12px 18px; border-radius: var(--r); border: none;
@@ -308,7 +309,7 @@ html, body { height: 100%; font-family: 'Sora', sans-serif; background: var(--bg
   position: fixed; bottom: 82px; left: 50%; transform: translateX(-50%) translateY(12px);
   background: var(--bg3); border: 1px solid var(--verde); border-radius: 10px;
   padding: 11px 20px; font-size: 13px; font-weight: 500; z-index: 400;
-  opacity: 0; transition: all 0.25s; white-space: nowrap;
+  opacity: 0; transition: all 0.25s; max-width: 90vw; text-align: center;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -341,14 +342,14 @@ html, body { height: 100%; font-family: 'Sora', sans-serif; background: var(--bg
 .rel-btns { display: flex; gap: 8px; margin-bottom: 14px; }
 .rel-preview-header {
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 12px; color: var(--text2); margin-bottom: 8px;
+  font-size: 12px; color: var(--text2); margin-bottom: 8px; gap: 10px;
 }
 .rel-table-wrap { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--border2); }
 .rel-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .rel-table th {
   background: var(--bg3); padding: 10px 12px; text-align: left;
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border); white-space: nowrap;
 }
 .rel-table td { padding: 10px 12px; border-bottom: 1px solid var(--border2); color: var(--text); }
 .rel-table tr:last-child td { border-bottom: none; }
@@ -537,7 +538,7 @@ html, body { height: 100%; font-family: 'Sora', sans-serif; background: var(--bg
       <div id="rel-preview-wrap" style="display:none">
         <div class="rel-preview-header">
           <span id="rel-preview-label"></span>
-          <span style="font-size:11px;opacity:0.6">Prévia: máx. 50 registros</span>
+          <span style="font-size:11px;opacity:0.6;white-space:nowrap">Prévia: máx. 50</span>
         </div>
         <div class="rel-table-wrap">
           <table class="rel-table" id="rel-table">
@@ -591,7 +592,7 @@ html, body { height: 100%; font-family: 'Sora', sans-serif; background: var(--bg
       <div class="fg"><label>CPF <span class="req">*</span></label><input id="v-cpf" type="text" placeholder="000.000.000-00" maxlength="14" oninput="mCPF(this)"></div>
       <div class="fg"><label>Telefone <span class="req">*</span></label><input id="v-tel" type="tel" placeholder="(11) 99999-9999" maxlength="15" oninput="mTel(this)"></div>
       <div class="fg"><label>E-mail</label><input id="v-email" type="email" placeholder="email@exemplo.com"></div>
-      <div class="fg"><label>Título eleitoral <span class="req">*</span></label><input id="v-titulo" type="text" placeholder="Número do título"></div>
+      <div class="fg"><label>Título eleitoral</label><input id="v-titulo" type="text" placeholder="Número do título"></div>
       <div class="fg span2"><label>Tipo</label>
         <select id="v-tipo">
           <option value="eleitor">👤 Eleitor</option>
@@ -602,10 +603,12 @@ html, body { height: 100%; font-family: 'Sora', sans-serif; background: var(--bg
         <label>Colégio Eleitoral</label>
         <input id="v-escola" type="text" placeholder="Digite o nome do colégio..." oninput="acEscola(this)" autocomplete="off">
         <div class="ac-list" id="ac-list"></div>
+        <div class="fg-hint">Escolha na lista para preencher zona e seção automaticamente, ou digite os dois abaixo.</div>
       </div>
-      <div class="fg"><label>Zona Eleitoral</label><input id="v-zona" type="text" placeholder="Auto" readonly></div>
+      <div class="fg"><label>Zona Eleitoral</label><input id="v-zona" type="text" placeholder="Ex: 278" inputmode="numeric" autocomplete="off"></div>
       <div class="fg"><label>Seção</label>
-        <select id="v-secao"><option value="">– Seção –</option></select>
+        <input id="v-secao" type="text" list="secoes-list" placeholder="Ex: 0142" autocomplete="off">
+        <datalist id="secoes-list"></datalist>
       </div>
       <div class="fg span2"><label>Endereço Residencial</label><input id="v-end" type="text" placeholder="Rua, número, bairro"></div>
       <div class="fg span2"><label>📝 Observações / Atendimento</label><textarea id="v-obs" placeholder="Descreva o atendimento, demandas ou histórico deste eleitor..."></textarea></div>
@@ -651,56 +654,73 @@ const SUPA_KEY = 'sb_publishable_8gD2NKDLSnLmnBpwF7b-Ug_iFmB6kaN';
 const { createClient } = supabase;
 const sb = createClient(SUPA_URL, SUPA_KEY);
 
-// STATE
-let CU = null, VOTERS = [], USERS = [], filterType = 'todos', editingId = null, mapInited = false, leafMap = null, mapMarkers = [];
+// ESTADO
+let CU = null, VOTERS = [], USERS = [], filterType = 'todos', editingId = null;
+let mapInited = false, leafMap = null, mapMarkers = [];
 
-// BOOT
+// ===== COORDENADAS DOS BAIRROS (declarado uma única vez) =====
+const BCOORDS = {"CENTRO":{lat:-23.461,lng:-46.533},"MACEDO":{lat:-23.454,lng:-46.521},"JARDIM PINHAL":{lat:-23.465,lng:-46.545},"JARDIM PARAVENTI":{lat:-23.470,lng:-46.548},"JARDIM ADRIANA":{lat:-23.472,lng:-46.554},"JARDIM COCAIA":{lat:-23.468,lng:-46.557},"JARDIM BOM CLIMA":{lat:-23.480,lng:-46.560},"PARQUE RENATO MAIA":{lat:-23.456,lng:-46.528},"JARDIM SAO PAULO":{lat:-23.467,lng:-46.540},"JARDIM SANTA CLARA":{lat:-23.464,lng:-46.552},"JARDIM VALERIA":{lat:-23.476,lng:-46.561},"VILA SAO JORGE":{lat:-23.452,lng:-46.538},"JARDIM DOS AFONSOS":{lat:-23.478,lng:-46.568},"VILA BREMEN":{lat:-23.449,lng:-46.530},"COCAIA":{lat:-23.469,lng:-46.558},"VILA PROGRESSO":{lat:-23.457,lng:-46.527},"PARQUE CECAP":{lat:-23.462,lng:-46.563},"VILA RIO DE JANEIRO":{lat:-23.453,lng:-46.515},"JARDIM NOVA CIDADE":{lat:-23.441,lng:-46.499},"CONJUNTO MARCOS FREIRE":{lat:-23.436,lng:-46.487},"JARDIM LEBLON":{lat:-23.447,lng:-46.494},"PARQUE JUREMA":{lat:-23.439,lng:-46.480},"JARDIM CENTENARIO":{lat:-23.444,lng:-46.491},"PARQUE DAS NACOES":{lat:-23.443,lng:-46.503},"CIDADE PARQUE ALVORADA":{lat:-23.432,lng:-46.475},"JARDIM GUARACY":{lat:-23.449,lng:-46.497},"JARDIM ARUJA":{lat:-23.434,lng:-46.502},"JARDIM JACY":{lat:-23.438,lng:-46.485},"PARQUE SAO MIGUEL":{lat:-23.446,lng:-46.496},"CIDADE ARACILIA":{lat:-23.430,lng:-46.470},"JARDIM SANTO AFONSO":{lat:-23.441,lng:-46.490},"PARQUE MARIA HELENA":{lat:-23.435,lng:-46.479},"GOPOUVA":{lat:-23.474,lng:-46.523},"JARDIM VILA GALVAO":{lat:-23.468,lng:-46.516},"JARDIM MUNHOZ":{lat:-23.480,lng:-46.531},"VILA SAO RAFAEL":{lat:-23.471,lng:-46.507},"PONTE GRANDE":{lat:-23.477,lng:-46.519},"JARDIM TRANQUILIDADE":{lat:-23.482,lng:-46.514},"VILA ENDRES":{lat:-23.485,lng:-46.508},"JARDIM DOURADO":{lat:-23.476,lng:-46.511},"VILA AUGUSTA":{lat:-23.469,lng:-46.499},"VILA DAS PALMEIRAS":{lat:-23.463,lng:-46.505},"JARDIM SANTA FRANCISCA":{lat:-23.458,lng:-46.510},"JARDIM SANTA RITA":{lat:-23.491,lng:-46.551},"JARDIM CAPRI":{lat:-23.486,lng:-46.556},"VILA NOSSA SENHORA DE FATIMA":{lat:-23.489,lng:-46.560},"VILA FLORIDA":{lat:-23.493,lng:-46.548},"PARQUE MIKAIL":{lat:-23.488,lng:-46.543},"PARQUE PRIMAVERA":{lat:-23.494,lng:-46.540},"JARDIM SAO DOMINGOS":{lat:-23.497,lng:-46.554},"JARDIM ALMEIDA PRADO":{lat:-23.500,lng:-46.547},"JARDIM AMERICA":{lat:-23.496,lng:-46.538},"JARDIM PARAISO":{lat:-23.499,lng:-46.535},"JARDIM NOVA TABOCO":{lat:-23.502,lng:-46.543},"JARDIM SANTA LIDIA":{lat:-23.492,lng:-46.558},"JARDIM TAMASSIA":{lat:-23.504,lng:-46.549},"VILA GALVAO":{lat:-23.510,lng:-46.523},"VILA ROSALIA":{lat:-23.514,lng:-46.519},"RECREIO SAO JORGE":{lat:-23.517,lng:-46.528},"JARDIM FLOR DA MONTANHA":{lat:-23.520,lng:-46.535},"JARDIM ALIANCA":{lat:-23.512,lng:-46.514},"JARDIM SANTA MENA":{lat:-23.507,lng:-46.530},"PARQUE CONTINENTAL III":{lat:-23.505,lng:-46.517},"PARQUE CONTINENTAL II":{lat:-23.508,lng:-46.520},"PARQUE CONTINENTAL IV":{lat:-23.503,lng:-46.515},"JARDIM ROSA DE FRANCA":{lat:-23.506,lng:-46.526},"JARDIM SAO LUIS":{lat:-23.511,lng:-46.516},"JARDIM MOREIRA":{lat:-23.513,lng:-46.533},"JARDIM BETEL":{lat:-23.516,lng:-46.512},"JARDIM LAS VEGAS":{lat:-23.519,lng:-46.539},"JARDIM PALMIRA":{lat:-23.509,lng:-46.537},"BONSUCESSO":{lat:-23.485,lng:-46.586},"PARQUE SANTOS DUMONT":{lat:-23.490,lng:-46.578},"VILA NOVA BONSUCESSO":{lat:-23.487,lng:-46.591},"JARDIM LENIZE":{lat:-23.493,lng:-46.583},"JARDIM SAO JOAO":{lat:-23.496,lng:-46.575},"PONTE ALTA":{lat:-23.500,lng:-46.568},"CONJUNTO HAROLDO VELOSO":{lat:-23.480,lng:-46.596},"CIDADE SOBERANA":{lat:-23.483,lng:-46.571},"JARDIM FORTALEZA":{lat:-23.478,lng:-46.564},"JARDIM SANTA TEREZINHA":{lat:-23.474,lng:-46.570},"CIDADE JARDIM CUMBICA":{lat:-23.424,lng:-46.461},"JARDIM MARIA DIRCE":{lat:-23.418,lng:-46.465},"JARDIM PRESIDENTE DUTRA":{lat:-23.413,lng:-46.453},"JARDIM CUMBICA":{lat:-23.421,lng:-46.458},"VILA NOVA CUMBICA":{lat:-23.427,lng:-46.455},"VILA PARAISO":{lat:-23.430,lng:-46.448},"RESIDENCIAL PARQUE CUMBICA":{lat:-23.415,lng:-46.469},"JARDIM DAS NACOES":{lat:-23.436,lng:-46.443},"JARDIM CASTANHA":{lat:-23.440,lng:-46.450},"PARQUE UIRAPURU":{lat:-23.417,lng:-46.459},"CONJUNTO INOCOOP":{lat:-23.409,lng:-46.455},"JARDIM OTTAWA":{lat:-23.443,lng:-46.462},"PRESIDENTE DUTRA":{lat:-23.410,lng:-46.460}};
+
+// ===== ESCOLAS / COLÉGIOS ELEITORAIS =====
+const ESCOLAS = [{"n":"COLGIO DA POLCIA MILITAR - UNIDADE GUARULHOS","z":176,"b":"CENTRO","s":["410","418","424","429","436","441","445","450","451","455","456","458","461","463","465","470","476","479","481"]},{"n":"COLGIO ENIAC","z":176,"b":"CENTRO","s":["10","12","14","16","18","24","25","26","27","28","29","197","247","249","287","332"]},{"n":"COLEGIO T. PARTHENON - UNIDADE I","z":176,"b":"MACEDO","s":["312","333","354","368","386","398","412","420","427","437","443","449","454","460","469","484","490","498"]},{"n":"E.E. LYDIA KITZ MOREIRA","z":176,"b":"JARDIM SANTA CLARA","s":["282","286","291","305","309","317","329","336","344","351","359","365","374","380","389","397","403"]},{"n":"E.E. PASTOR AMARO JOS DOS SANTOS","z":176,"b":"JARDIM SAO PAULO","s":["80","81","82","83","208","237","270","495"]},{"n":"E.E. PEDRO ROBERTO VAGHI","z":176,"b":"JARDIM VALERIA","s":["486","492"]},{"n":"E.E. PROF BENEDITA DE OLIVEIRA ALE","z":176,"b":"JARDIM COCAIA","s":["169","177","182","186","191","192","202","207","482","489"]},{"n":"E.E. PROFESSOR MOTOOKA","z":176,"b":"JARDIM ADRIANA","s":["316","335","339","343","347","348","358","363","366","373","377","382","387","391","394"]},{"n":"E.E. SANTA CECLIA","z":176,"b":"JARDIM COCAIA","s":["216","229","254","256","402","406","413","416","426","434","442"]},{"n":"E.P.G CRISPINIANO SOARES","z":176,"b":"JARDIM BOM CLIMA","s":["310","311","340","349","361","370","383","392"]},{"n":"E.P.G. ANTONIO APARECIDO MAGALHAES","z":176,"b":"JARDIM PARAVENTI","s":["408","417","431","446","473"]},{"n":"E.P.G. JOSE CARLOS DA SILVA","z":176,"b":"JARDIM ADRIANA","s":["409","411","419","423","428","433","440","444","448","452","457","459","462","464","467"]},{"n":"E.P.G. TIA NASTCIA","z":176,"b":"JARDIM PINHAL","s":["171","179","189","190"]},{"n":"EE PADRE CONRADO SIVILA ALSINA","z":176,"b":"JARDIM BOM CLIMA","s":["84","85","86","87","88","89","90","91","92","93","94","95","96","97","236","266","279","494"]},{"n":"EE. FRANCISCO ANTUNES FILHO","z":176,"b":"PARQUE CECAP","s":["119","120","121","122","123","124","125","126","127","128","129","130","233","269","299","331","357","401"]},{"n":"EE. CAPISTRANO DE ABREU","z":176,"b":"CENTRO","s":["19","20","21","22","23","175","248","334"]},{"n":"EE. CONSELHEIRO CRISPINIANO","z":176,"b":"CENTRO","s":["30","31","32","33","178","196","241","283","325","353","375","388","399","415","422","438","453","466"]},{"n":"EE. FIORAVANTE IERVOLINO","z":176,"b":"JARDIM PARAVENTI","s":["57","58","59","60","61","62","63","64","65","66","239","262"]},{"n":"EE. MARIA LEONI","z":176,"b":"JARDIM PINHAL","s":["39","40","41","42","43","44","45","46","47","48","49","50","51","52","53","54","55","56"]},{"n":"EE. PROF ALICE CHUERY","z":176,"b":"VILA SAO JORGE","s":["111","112","113","114","115","116","117","118","188","214","225","234","264","284","302","323","341","356","369","381","395"]},{"n":"EE. PROF DULCE BREVES NEVES","z":176,"b":"JARDIM DOS AFONSOS","s":["306","314","320","326","483"]},{"n":"EE. PROF FRANCISCA BATISTA TRINDADE","z":176,"b":"MACEDO","s":["168","194","204","242","293","327","384","432","468"]},{"n":"EE. PROF HILDA PRATES GALLO","z":176,"b":"COCAIA","s":["172","184","198","200","201","203","206","211","212","215","218","221","223","227","228","231","271","280","290","303"]},{"n":"EE. PROF MARIA HELENA BARBOSA MARTINS","z":176,"b":"VILA BREMEN","s":["176","199","205","213","217","226","230","255","267","275","288","307","318","330","338","346","355","362","367","378","385"]},{"n":"EE. PROF FREDERICO DE BARROS BROTERO","z":176,"b":"VILA PROGRESSO","s":["34","35","36","37","38","210","222","240","278","321","345","364","376","393","407"]},{"n":"EE. PROF SILVRIO BERTONI","z":176,"b":"JARDIM SAO PAULO","s":["67","68","69","70","71","72","73","74","75","76","77","78","79","220","238"]},{"n":"EE. VEREADOR ANTONIO DE RE","z":176,"b":"MACEDO","s":["98","99","100","101","102","103","104","105","106","107","108","109","110","170","181","235","265"]},{"n":"EE. VEREADOR ELSIO DE OLIVEIRA NEVES","z":176,"b":"PARQUE CECAP","s":["131","132","133","134","135","136","137","187","209","224","246","258","304","352","396"]},{"n":"ESCOLA SENAI HERMENEGILDO CAMPOS","z":176,"b":"PARQUE RENATO MAIA","s":["252","274","277","294","295","315","328","342"]},{"n":"IFSP - INSTITUTO FEDERAL SP","z":176,"b":"VILA RIO DE JANEIRO","s":["251","263","276","292","308","324","474","488","493"]},{"n":"SERVIO SOCIAL DA INDSTRIA - SESI","z":176,"b":"JARDIM ADRIANA","s":["253","257","259","260","261","281","285","296","475","477","480","485","491","497"]},{"n":"UNIVERSIDADE DE GUARULHOS - UNG","z":176,"b":"CENTRO","s":["1","2","3","4","5","6","7","8","9","173","183","193","232","268","298","319","337","371","414","430"]},{"n":"EE LOUIS BRAILLE","z":185,"b":"JARDIM ANGLICA","s":["422"]},{"n":"EE. AGOSTINHO CANO","z":185,"b":"JARDIM NOVA CIDADE","s":["194","195","196","197","198","199","200","201","202","203","268","283","292","303"]},{"n":"EE. ANNA LAMBERGA ZEGLIO","z":185,"b":"CONJUNTO MARCOS FREIRE","s":["212","213","214","215","216","217","218","219","220","221","266","302","336","362","396","411"]},{"n":"EE. BARTHOLOMEU DE CARLOS","z":185,"b":"JARDIM LEBLON","s":["51","52","53","54","55","56","57","58","59","60","415","417","430"]},{"n":"EE. DEPUTADO MAURCIO GOULART","z":185,"b":"VILA DINAMARCA","s":["35","36","37","38","39","40","261","269","306","343","379","391","401","427"]},{"n":"EE. GUILHERMINO RODRIGUES DE LIMA","z":185,"b":"JARDIM ARUJA","s":["106","107","108","109","110","111","112","113","114","115","116","117","305"]},{"n":"EE. ORLANDO MINELLA","z":185,"b":"JARDIM JACY","s":["74","75","76","77","78","79","80","81","82","83","406","428"]},{"n":"EE. PADRE AUGUST STAUDER","z":185,"b":"CIDADE ARACILIA","s":["41","42","43","44","271","272","274","304"]},{"n":"EE. PARQUE JUREMA III","z":185,"b":"PARQUE JUREMA","s":["234","235","236","237","238","239","240","241","242","243","244","245","257","258","273"]},{"n":"EE. PASTOR JOO NUNES","z":185,"b":"JARDIM CENTENARIO","s":["132","133","134","135","136","137","138","139","140","141","259","282","315","335","359","383"]},{"n":"EE. PIMENTAS VII","z":185,"b":"CONJUNTO MARCOS FREIRE","s":["249","250","251","252","253","254","255","256","260","276","323","342","354","365","377","393","410"]},{"n":"EE. PROF ALAYDE MARIA VICENTE","z":185,"b":"JARDIM MARIA ALICE","s":["64","65","66","67","68","69","70","71","72","73","262","277","328"]},{"n":"EE. PROF MARIA APARECIDA FELIX PORTO","z":185,"b":"PARQUE DAS NACOES","s":["168","169","170","171","172","173","174","175","176","177","265","280","312","367","384","394","404","407","418"]},{"n":"EE. PROF MARIA APARECIDA RODRIGUES","z":185,"b":"CIDADE PARQUE ALVORADA","s":["16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","294"]},{"n":"EE. PROF MARIA HILDA ORNELAS DE OLIVEIRA","z":185,"b":"JARDIM SANTO AFONSO","s":["45","46","47","48","49","50","263","278","345","390","409"]},{"n":"EE. PROF MARINHA FERREIRA DO NASCIMENTO","z":185,"b":"JARDIM LEBLON","s":["184","185","186","187","188","189","190","191","192","193","288"]},{"n":"EE. PROF THEREZINHA CLOSA ELEUTERIO","z":185,"b":"PARQUE MARIA HELENA","s":["2","3","4","5","6","7","8","9","10","11","12","13","14","15","293","299","307"]},{"n":"EE. PROFESSOR MARIO NAKATA","z":185,"b":"PARQUE SAO MIGUEL","s":["153","154","155","156","157","158","159","279","318","356","433"]},{"n":"EE. PROF ANTONIO VIANA DE SOUZA","z":185,"b":"PARQUE JUREMA","s":["118","119","120","121","122","123","124","125","126","127","128","129","130","131"]},{"n":"EE. PROF CID AUGUSTO GUELLI","z":185,"b":"JARDIM ANNY","s":["84","85","287","291","297","311","314","329","344","350","360","370","381"]},{"n":"EE. PROF LICINIO CARPINELLI","z":185,"b":"JARDIM CENTENARIO","s":["178","179","180","181","182","183","267","290","308","326","349","375","387","398","402"]},{"n":"EPG DORIVAL CAYMMI","z":185,"b":"JARDIM GUARACY","s":["1","86","87","88","89","90","91","92","93","94","95","96"]},{"n":"EPG DORCELINA FOLADOR","z":185,"b":"JARDIM ANGLICA","s":["246","247","248","270","289","298","322","338","358","376","386"]},{"n":"EPG SOPHIA FANTAZZINI CECCHINATO","z":185,"b":"JARDIM ANGLICA","s":["97","98","99","100","101","102","103","104","105","301"]},{"n":"COLGIO ADVENTISTA DE GUARULHOS","z":278,"b":"GOPOUVA","s":["139","140","141","142","143","144","145","146","147","148","149","150","151","463"]},{"n":"COLGIO FARIAS BRITO","z":278,"b":"GOPOUVA","s":["322","323","344","349","375","384","385","396","404","461","466","470"]},{"n":"COLEGIO GUILHERME DE ALMEIDA","z":278,"b":"GOPOUVA","s":["334","340","341","352","357","361","366","376","378","381","386","392"]},{"n":"EE. CAPITAO PM ALBERTO MENDES JUNIOR","z":278,"b":"JARDIM VILA GALVAO","s":["91","92","93","94","95","96","97","98","99","100"]},{"n":"EE. CARLOS MACHADO BITTENCOURT","z":278,"b":"JARDIM MUNHOZ","s":["216","217","218","219","220","221","222","223","224","225","271","319","336"]},{"n":"EE. CORONEL ARY GOMES","z":278,"b":"VILA SAO RAFAEL","s":["121","122","123","124","125","126","127","128","129","130","131","132","133","134","135","136","262","315","397"]},{"n":"EE. DOM PAULO ROLIM LOUREIRO","z":278,"b":"PONTE GRANDE","s":["198","199","200","201","202","203","204","205","206","207","208","209","210","211","212","241","256","276","309","331","369","373","383","399"]},{"n":"EE. RICO VERISSIMO","z":278,"b":"VILA ENDRES","s":["187","188","189","190","191","192","266","311","330","348","360","372","395","403"]},{"n":"EE. JOO ALVARES DE SIQUEIRA BUENO","z":278,"b":"JARDIM TRANQUILIDADE","s":["108","109","110","111","112","113","114","115","116","117","118","119","120","260","265","269"]},{"n":"EE. JOO CRISPINIANO SOARES","z":278,"b":"VILA AUGUSTA","s":["439","440","441","442","443","444","445","446","447","449","462","464"]},{"n":"EE. PROFESSOR ENNIO CHIESA","z":278,"b":"JARDIM DOURADO","s":["169","170","171","172","173","174","175","176","177","178","179","180","181","398"]},{"n":"EE. PROFESSOR FABIO FANUCCHI","z":278,"b":"JARDIM VILA GALVAO","s":["101","102","103","104","105","106","107","245","253","263","293","316","328","370"]},{"n":"EE. PROF JOSE SCARAMELLI","z":278,"b":"VILA DAS PALMEIRAS","s":["419","420","421","422","423","424","425","426","427","428","429","430","431","432","433"]},{"n":"EE. PROF PAULO NOGUEIRA","z":278,"b":"JARDIM SANTA FRANCISCA","s":["418","450","451","452","453","454","455","456","457","458","459"]},{"n":"EE. ROTARY","z":278,"b":"VILA ENDRES","s":["193","194","195","196","197","252","310","350"]},{"n":"COLGIO GUARULHOS","z":279,"b":"JARDIM CAPRI","s":["577","598","604","619","638","650","663"]},{"n":"EE. ALLYRIO DE FIGUEIREDO BRASIL","z":279,"b":"VILA NOSSA SENHORA DE FATIMA","s":["79","80","81","82","83","84","85","86","87","88","89","350","472","489","495","513","525"]},{"n":"EE. FLVIO XAVIER ARANTES","z":279,"b":"JARDIM SANTA RITA","s":["29","30","31","32","33","34","35","36","37","38","39","40","41","42"]},{"n":"EE. JARDIM SANTA LIDIA","z":279,"b":"JARDIM SANTA LIDIA","s":["539","551","560","572","584","594","607","612","618","626","631","646","649","654","662","675"]},{"n":"EE. MARIA CELIA FALCAO RODRIGUES","z":279,"b":"PARQUE MIKAIL","s":["522","528","534","536","543","549","555","563","576","582","588","599","606","611","620","627","637"]},{"n":"EE. PADRE ANTONIO VELASCO ARAGON","z":279,"b":"JARDIM SAO DOMINGOS","s":["290","365","383","402","424","439","451","456","459","462","465","467","469","521","530","581"]},{"n":"EE. PROF JOAO LUIZ DE GODOY MOREIRA","z":279,"b":"JARDIM ALMEIDA PRADO","s":["292","316","340","352","408","460","477","496","520","542","562","587","608","614","630","647","660"]},{"n":"EE. PROF JOAQUIM GARCIA SALVADOR","z":279,"b":"JARDIM AMERICA","s":["298","337","386","463","479","514","537","564","590","613"]},{"n":"EE. PROF MILTON CERNACH","z":279,"b":"JARDIM PARAISO","s":["291","321","339","359","368","384","392","401","411","441","455","466","475","484","488","492","500","501","512"]},{"n":"EE. PROFA. MARIA ANGLICA SOAVE","z":279,"b":"JARDIM NOVA TABOCO","s":["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","288","317","334","344"]},{"n":"EE. VALDIVINO DE CASTRO PEREIRA","z":279,"b":"VILA FLORIDA","s":["67","68","69","70","71","72","73","74","75","76","77","78","471","473"]},{"n":"EPG. AMADOR BUENO","z":279,"b":"JARDIM TAMASSIA","s":["541","547","553","559","569"]},{"n":"EPG. MARIO LAGO","z":279,"b":"PARQUE PRIMAVERA","s":["641","651","658","664","671","677","681","684","688","690"]},{"n":"APAE GUARULHOS UNIDADE 2","z":393,"b":"JARDIM SANTA MENA","s":["280","281","298","314","328","344","377","384","391","412"]},{"n":"COLGIO ADVENTISTA DE VILA GALVAO","z":393,"b":"VILA GALVAO","s":["243","251","256","264","277","289","312","358","393","409"]},{"n":"COLGIO MAHA-DEI","z":393,"b":"VILA GALVAO","s":["275","287","295","308","319","346","363","380","387","398"]},{"n":"EE. BOM PASTOR","z":393,"b":"RECREIO SAO JORGE","s":["154","155","158","164","170","188","197","212","224","246"]},{"n":"EE. CARLOS GIULIETTO","z":393,"b":"JARDIM FLOR DA MONTANHA","s":["167","187","210","228","236","247","258","266","336","355","365","370","376","379","405"]},{"n":"EE. CLARICE LISPECTOR","z":393,"b":"JARDIM ALIANCA","s":["99","100","101","102","103","104"]},{"n":"EE. FRANCISCO MILTON DE ANDRADE","z":393,"b":"PARQUE CONTINENTAL III","s":["222","235","257","270","297","316","330","347","364","378","385","397"]},{"n":"EE. JOCILA PEREIRA GUIMARAES","z":393,"b":"VILA GALVAO","s":["75","76","77","78","79","80","81","82","83","84","85","86","174","194","230","284"]},{"n":"EE. JOSE ALVES DE CERQUEIRA CESAR","z":393,"b":"VILA ROSALIA","s":["40","41","42","43","44","45","46","47","48","175","200","227","237","286","309"]},{"n":"EE. JOSE MARUN ATALLA","z":393,"b":"PARQUE CONTINENTAL IV","s":["21","22","23","24","25","26","160","165","178","190","198","201","213"]},{"n":"EE. JUVENAL RAMOS BARBOSA","z":393,"b":"JARDIM ROSA DE FRANCA","s":["87","88","89","90","91","92","93","94","95","96","97","98","159","173","193","211","343"]},{"n":"EE. PROF. HOMERO RUBENS DE SA","z":393,"b":"VILA GALVAO","s":["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","176","203","226"]},{"n":"EE. PROF. JOSE ROBERTO FRIEBOLIM","z":393,"b":"VILA ROSALIA","s":["49","50","51","52","53","54","55","56","57","58","59","60","209"]},{"n":"EE. PROFA. ROBERTA MARIA LOPES CHAVES","z":393,"b":"JARDIM BETEL","s":["166","177","189","195","206","215","220","238","359","373"]},{"n":"EPG CESAR LATTES","z":393,"b":"PARQUE CONTINENTAL II","s":["27","28","29","30","31","32","157","161","171","216","229","244","261","285","306","324"]},{"n":"EPG MARIO QUINTANA","z":393,"b":"JARDIM LAS VEGAS","s":["274","276","304","323","337","349","356","367","375","382","392","403"]},{"n":"UNIMESP","z":393,"b":"VILA ROSALIA","s":["116","117","118","119","120","121","122","123","124","125","126","127","128","129","130","131","132","133","134","135","136","137","138","139","140","141","142","143","144","145","146","147","148","149","150","151","172","192","214"]},{"n":"EE. BRIGADEIRO HAROLDO VELOSO","z":394,"b":"CONJUNTO HAROLDO VELOSO","s":["20","21","22","23","24","25","26","27","28","153","157","180","213","264","307","359","411","457","486","576"]},{"n":"EE. ESTEVAM DIAS TAVARES","z":394,"b":"BONSUCESSO","s":["1","2","3","4","5","6","7","8","9"]},{"n":"EE. PARQUE SANTOS DUMONT","z":394,"b":"PARQUE SANTOS DUMONT","s":["260","276","295","330","349","363","380","400","413","430","444","462","472","516","561","591"]},{"n":"EE. PROF. ARTHUR MARRET","z":394,"b":"VILA NOVA BONSUCESSO","s":["40","41","42","43","44","45","150","164","171","498"]},{"n":"EE. PROF. CYRO BARREIROS","z":394,"b":"JARDIM LENIZE","s":["134","135","136","137","138","139","140","141","161","167","177","190","215","228","249"]},{"n":"EE. PROF. HELIO POLESEL","z":394,"b":"VILA NOVA BONSUCESSO","s":["33","34","35","36","37","38","39","449","465","479","506","521","537"]},{"n":"EE. PROF. HERNANI FURINI","z":394,"b":"JARDIM SAO JOAO","s":["193","200","220","245","259","274","287","297","327","343","368","399","434","454","523"]},{"n":"EE. PROFA. SALIME MUDEH","z":394,"b":"JARDIM SAO JOAO","s":["92","93","94","95","96","97","98","99","100","101","102","103","104","105","106","107"]},{"n":"EE. SANDI MIYAKE CAPITAO AVIADOR","z":394,"b":"JARDIM SAO JOAO","s":["77","78","79","80","81","82","83","84","85","86","87","88","89","90","91"]},{"n":"EE. CIDADE SERODIO","z":394,"b":"JARDIM SANTO EXPEDITO","s":["235","265","283","584"]},{"n":"EE. JARDIM FORTALEZA II","z":394,"b":"JARDIM FORTALEZA","s":["131","132","133","156","173","202","221","240","269","286","316","493","525","553","574","586"]},{"n":"EE. ANA MARIA HOPPNER GOMES","z":394,"b":"CIDADE SOBERANA","s":["184","196","211","227","248","345","369","379","389","396","408","415","426","433","439","509","587"]},{"n":"EE. IDALINA LADEIRA FERREIRA","z":394,"b":"CIDADE SOBERANA","s":["450","460","466","477","487","501","522","529","544","547","551","558","562","568"]},{"n":"EE. OSWALDO SAMPAIO ALVES","z":395,"b":"JARDIM MARIA DIRCE","s":["88","89","90","91","92","93","94","95","96","97","98","99","100","101"]},{"n":"EE. COMANDANTE JOAO RIBEIRO DE BARROS","z":395,"b":"CIDADE JARDIM CUMBICA","s":["74","75","76","77","78","79","80","81","82","83","84","85","86","87"]},{"n":"EE. HUGO DE AGUIAR","z":395,"b":"VILA PARAISO","s":["151","160","170","177","185","198","313","335","357","376","399","423","470","474","503","504","505"]},{"n":"EE. JARDIM NOVA CUMBICA DOIS","z":395,"b":"VILA NOVA CUMBICA","s":["187","304","306","309","323","337","349","355","362","369","377","394","406","437","471","473"]},{"n":"EE. JOO DE ALMEIDA BARBOSA","z":395,"b":"VILA NOVA CUMBICA","s":["192","217","224","233","238","252","280","287","642"]},{"n":"EE. PADRE BRUNO RICCO","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["528","529","530","531","610","611","612","613","614","615","616","617","618","619","632","636","641","645"]},{"n":"EE. PADRE VALENTIM GONZALES ALONSO","z":395,"b":"PARQUE UIRAPURU","s":["453","454","455","456","457","458","459","460","461","462","463","464","465","466","472","477"]},{"n":"EE. PREFEITO ANTONIO PRATICI","z":395,"b":"CONJUNTO INOCOOP","s":["532","533","534","535","536","537","538","539","540","541","542","543","544","545","546","547"]},{"n":"EE. PROF JOAO CAVALHEIRO SALEM","z":395,"b":"JARDIM CUMBICA","s":["32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","433"]},{"n":"EE. SEBASTIAO WALTER FUSCO","z":395,"b":"CIDADE JARDIM CUMBICA","s":["47","48","49","50","51","52","53","54","55","56","57","58","59","60","61","62"]},{"n":"EE. VICTOR CIVITA","z":395,"b":"CIDADE JARDIM CUMBICA","s":["318","340","408","479","646"]},{"n":"EE. INOCOOP II","z":395,"b":"RESIDENCIAL PARQUE CUMBICA","s":["509","510","511","512","513","514","515","516","640","649"]},{"n":"EE. JARDIM MARIA DIRCE 3","z":395,"b":"JARDIM MARIA DIRCE","s":["517","518","519","520","521","522","523","524","525","526","527","597","598","627"]},{"n":"EE. PROFA ZILDA ROMEIRO P.M. DA SILVA","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["559","560","561","562","563","564","565","566","567","568","569","570","571","572","573","574","575","576","577","578","579","580","581","582","583"]},{"n":"EE. PROFA CACILDA CACAPAVA DE OLIVEIRA","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["548","549","550","551","552","553","554","555","556","557","558"]},{"n":"EM. ANISIO TEIXEIRA","z":395,"b":"VILA PARAISO","s":["483","486","490","495","500","508","631","638","643","650","654"]},{"n":"EPG. JORGE AMADO","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["623","624","625","626","629"]},{"n":"EPG. PERSEU ABRAMO","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["584","585","586","587","588","589","590","591","592","593"]},{"n":"EPG. NISE DA SILVEIRA","z":395,"b":"JARDIM OTTAWA","s":["146","150","200","268","301","350","402","426"]},{"n":"EPG. MARIAZINHA RESENDE FUSARI","z":395,"b":"PRESIDENTE DUTRA","s":["594","595","596","634","651","652"]},{"n":"EPG. VER. CARLOS FRANCHIN","z":395,"b":"JARDIM CUMBICA","s":["628","630","635","639","644","647","653","656"]},{"n":"EPG. ZELIA GATAI","z":395,"b":"PRESIDENTE DUTRA","s":["620","621","622","633","648"]}];
+
+// ===== BOOT =====
 async function boot() {
-  try { const {error}=await sb.from('usuarios').select('id').limit(1); if(error) throw error; } catch(e){console.error(e);}
-  document.getElementById('loading-screen').style.display='none';
-  document.getElementById('login-screen').style.display='flex';
+  try { const {error} = await sb.from('usuarios').select('id').limit(1); if(error) throw error; }
+  catch(e) { console.error('Falha ao conectar no Supabase:', e); }
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
 }
 boot();
 
-// LOGIN / LOGOUT
+// ===== LOGIN / LOGOUT =====
 async function doLogin() {
-  const login=document.getElementById('li-user').value.trim(), pass=document.getElementById('li-pass').value;
-  const btn=document.getElementById('li-btn');
-  document.getElementById('li-err').style.display='none';
-  btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
+  const login = document.getElementById('li-user').value.trim();
+  const pass  = document.getElementById('li-pass').value;
+  const btn   = document.getElementById('li-btn');
+  const err   = document.getElementById('li-err');
+  err.style.display = 'none';
+  if(!login || !pass) { err.textContent = '⚠️ Preencha usuário e senha.'; err.style.display = 'block'; return; }
+  btn.innerHTML = '<span class="spin"></span>'; btn.disabled = true;
   try {
-    const {data,error}=await sb.from('usuarios').select('*').eq('login',login).eq('senha',pass).single();
-    if(error||!data) throw new Error('not found');
-    CU=data;
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('app').style.display='flex';
+    // ilike = não diferencia maiúsculas de minúsculas no login
+    const { data, error } = await sb.from('usuarios').select('*').ilike('login', login).eq('senha', pass).maybeSingle();
+    if(error) throw error;
+    if(!data) { err.textContent = '⚠️ Usuário ou senha incorretos.'; err.style.display = 'block'; return; }
+    CU = data;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
     initApp();
-  } catch(e){ document.getElementById('li-err').style.display='block'; }
-  finally { btn.innerHTML='Entrar'; btn.disabled=false; }
+  } catch(e) {
+    console.error(e);
+    err.textContent = '⚠️ Não foi possível entrar. Verifique a conexão.';
+    err.style.display = 'block';
+  } finally { btn.innerHTML = 'Entrar'; btn.disabled = false; }
 }
-document.getElementById('li-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+document.getElementById('li-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+document.getElementById('li-user').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 
 function doLogout() {
   if(!confirm('Sair do sistema?')) return;
-  CU=null; VOTERS=[]; USERS=[];
-  document.getElementById('app').style.display='none';
-  document.getElementById('login-screen').style.display='flex';
-  document.getElementById('li-user').value='';
-  document.getElementById('li-pass').value='';
+  CU = null; VOTERS = []; USERS = [];
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('li-user').value = '';
+  document.getElementById('li-pass').value = '';
 }
 
-// INIT APP
+// ===== INIT =====
 async function initApp() {
-  const ini=CU.nome.split(' ').map(x=>x[0]).slice(0,2).join('');
-  document.getElementById('h-av').textContent=ini;
-  document.getElementById('h-uname').textContent=CU.nome.split(' ')[0];
-  const rb=document.getElementById('h-rbadge');
-  rb.textContent=CU.role==='admin'?'Admin':'Assessor';
-  rb.className='rbadge '+(CU.role==='admin'?'r-admin':'r-assessor');
-  document.getElementById('h-sub').textContent='Guarulhos · Sistema Eleitoral';
-  if(CU.role==='admin'){
-    document.getElementById('card-asses').style.display='block';
-    document.getElementById('f-assessor-wrap').style.display='block';
+  const ini = CU.nome.split(' ').map(x=>x[0]).slice(0,2).join('');
+  document.getElementById('h-av').textContent = ini;
+  document.getElementById('h-uname').textContent = CU.nome.split(' ')[0];
+  const rb = document.getElementById('h-rbadge');
+  rb.textContent = CU.role==='admin' ? 'Admin' : 'Assessor';
+  rb.className = 'rbadge ' + (CU.role==='admin' ? 'r-admin' : 'r-assessor');
+  document.getElementById('h-sub').textContent = 'Guarulhos · Sistema Eleitoral';
+  if(CU.role==='admin') {
+    document.getElementById('card-asses').style.display = 'block';
+    document.getElementById('f-assessor-wrap').style.display = 'block';
   }
   await loadData();
   renderDashboard();
@@ -709,14 +729,18 @@ async function initApp() {
 }
 
 async function loadData() {
-  let q=sb.from('eleitores').select('*').order('criado_em',{ascending:false});
-  if(CU.role!=='admin') q=q.eq('assessor_id',CU.id);
-  const {data:vd}=await q; VOTERS=vd||[];
-  if(CU.role==='admin'){const {data:ud}=await sb.from('usuarios').select('*').order('nome'); USERS=ud||[];}
+  let q = sb.from('eleitores').select('*').order('criado_em', {ascending:false});
+  if(CU.role!=='admin') q = q.eq('assessor_id', CU.id);
+  const { data:vd } = await q;
+  VOTERS = vd || [];
+  if(CU.role==='admin') {
+    const { data:ud } = await sb.from('usuarios').select('*').order('nome');
+    USERS = ud || [];
+  }
 }
 
-// NAV
-function navTo(name,el){
+// ===== NAVEGAÇÃO =====
+function navTo(name, el) {
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('sec-'+name).classList.add('active');
@@ -725,109 +749,107 @@ function navTo(name,el){
   if(name==='painel') renderDashboard();
 }
 
-// DASHBOARD
-function renderDashboard(){
-  const myVoters=CU.role==='admin'?VOTERS:VOTERS.filter(v=>v.assessor_id===CU.id);
-  document.getElementById('st-total').textContent=VOTERS.length;
-  document.getElementById('st-lid').textContent=VOTERS.filter(v=>v.tipo==='lider').length;
-  document.getElementById('st-ele').textContent=VOTERS.filter(v=>v.tipo==='eleitor').length;
-  document.getElementById('st-meu').textContent=CU.role==='admin'?VOTERS.length:myVoters.length;
-  document.getElementById('st-meu-lbl').textContent=CU.role==='admin'?'Total geral':'Meus cadastros';
-  if(CU.role==='admin'){
-    const av=USERS.filter(u=>u.role==='assessor');
-    document.getElementById('asses-list').innerHTML=av.length
-      ?av.map(a=>{const cnt=VOTERS.filter(v=>v.assessor_id===a.id).length; const l=VOTERS.filter(v=>v.assessor_id===a.id&&v.tipo==='lider').length; const ini=a.nome.split(' ').map(x=>x[0]).slice(0,2).join(''); return `<div class="arow"><div class="arow-left"><div class="avatar">${ini}</div><div><div class="arow-name">${a.nome}</div><div class="arow-login">@${a.login} · ⭐ ${l} lideranças</div></div></div><span class="count-badge">${cnt}</span></div>`;}).join('')
-      :'<div style="color:var(--text2);font-size:13px">Nenhum assessor cadastrado</div>';
+// ===== PAINEL =====
+function renderDashboard() {
+  const myVoters = CU.role==='admin' ? VOTERS : VOTERS.filter(v=>v.assessor_id===CU.id);
+  document.getElementById('st-total').textContent = VOTERS.length;
+  document.getElementById('st-lid').textContent = VOTERS.filter(v=>v.tipo==='lider').length;
+  document.getElementById('st-ele').textContent = VOTERS.filter(v=>v.tipo==='eleitor').length;
+  document.getElementById('st-meu').textContent = CU.role==='admin' ? VOTERS.length : myVoters.length;
+  document.getElementById('st-meu-lbl').textContent = CU.role==='admin' ? 'Total geral' : 'Meus cadastros';
+  if(CU.role==='admin') {
+    const av = USERS.filter(u=>u.role==='assessor');
+    document.getElementById('asses-list').innerHTML = av.length
+      ? av.map(a=>{
+          const cnt = VOTERS.filter(v=>v.assessor_id===a.id).length;
+          const l   = VOTERS.filter(v=>v.assessor_id===a.id && v.tipo==='lider').length;
+          const ini = a.nome.split(' ').map(x=>x[0]).slice(0,2).join('');
+          return `<div class="arow"><div class="arow-left"><div class="avatar">${ini}</div><div><div class="arow-name">${a.nome}</div><div class="arow-login">@${a.login} · ⭐ ${l} lideranças</div></div></div><span class="count-badge">${cnt}</span></div>`;
+        }).join('')
+      : '<div style="color:var(--text2);font-size:13px">Nenhum assessor cadastrado</div>';
   }
-  const zones={};
-  VOTERS.forEach(v=>{const z=v.zona||'Sem zona';zones[z]=(zones[z]||0)+1;});
-  const sorted=Object.entries(zones).sort((a,b)=>b[1]-a[1]);
-  const maxV=sorted.length?sorted[0][1]:1;
-  document.getElementById('zonas-chart').innerHTML=sorted.length
-    ?sorted.map(([z,c])=>`<div class="zbar"><div class="zbar-head"><span>Zona ${z}</span><strong>${c}</strong></div><div class="zbar-track"><div class="zbar-fill" style="width:${(c/maxV*100).toFixed(0)}%"></div></div></div>`).join('')
-    :'<div style="color:var(--text2);font-size:13px">Nenhum dado ainda</div>';
+  const zones = {};
+  VOTERS.forEach(v=>{ const z = v.zona || 'Sem zona'; zones[z] = (zones[z]||0)+1; });
+  const sorted = Object.entries(zones).sort((a,b)=>b[1]-a[1]);
+  const maxV = sorted.length ? sorted[0][1] : 1;
+  document.getElementById('zonas-chart').innerHTML = sorted.length
+    ? sorted.map(([z,c])=>`<div class="zbar"><div class="zbar-head"><span>Zona ${z}</span><strong>${c}</strong></div><div class="zbar-track"><div class="zbar-fill" style="width:${(c/maxV*100).toFixed(0)}%"></div></div></div>`).join('')
+    : '<div style="color:var(--text2);font-size:13px">Nenhum dado ainda</div>';
 }
 
-// CHIPS / FILTERS
-function setFilter(el){
+// ===== FILTROS =====
+function setFilter(el) {
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
-  filterType=el.dataset.f;
-  document.getElementById('f-tipo').value=filterType;
-  renderVoters();
-}
-function syncChipsFromSelect(){
-  const v=document.getElementById('f-tipo').value;
-  filterType=v;
-  document.querySelectorAll('.chip').forEach(c=>{c.classList.toggle('active',c.dataset.f===v);});
-}
-function limparFiltros(){
-  document.getElementById('srch').value='';
-  document.getElementById('f-tipo').value='todos';
-  if(document.getElementById('f-assessor')) document.getElementById('f-assessor').value='';
-  document.getElementById('f-zona').value='';
-  document.getElementById('f-bairro-vota').value='';
-  document.getElementById('f-bairro-res').value='';
-  filterType='todos';
-  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active',c.dataset.f==='todos'));
+  filterType = el.dataset.f;
+  document.getElementById('f-tipo').value = filterType;
   renderVoters();
 }
 
-function populateFilterSelects(){
-  const zonas=[...new Set(VOTERS.map(v=>v.zona).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
-  const fz=document.getElementById('f-zona'), curZ=fz.value;
-  fz.innerHTML='<option value="">Todas as zonas</option>'+zonas.map(z=>`<option value="${z}"${z===curZ?' selected':''}>${z}</option>`).join('');
-  const bairrosVota=[...new Set(VOTERS.map(v=>{const e=ESCOLAS.find(x=>x.n===v.escola);return e?e.b:null;}).filter(Boolean))].sort();
-  const fb=document.getElementById('f-bairro-vota'), curB=fb.value;
-  fb.innerHTML='<option value="">Todos os bairros</option>'+bairrosVota.map(b=>`<option value="${b}"${b===curB?' selected':''}>${b}</option>`).join('');
-  if(CU.role==='admin'){
-    const fa=document.getElementById('f-assessor'), curA=fa.value;
-    const av=USERS.filter(u=>u.role==='assessor');
-    fa.innerHTML='<option value="">Todos os assessores</option>'+av.map(a=>`<option value="${a.id}"${a.id===curA?' selected':''}>${a.nome}</option>`).join('');
+function syncChipsFromSelect() {
+  const v = document.getElementById('f-tipo').value;
+  filterType = v;
+  document.querySelectorAll('.chip').forEach(c=>{ c.classList.toggle('active', c.dataset.f===v); });
+}
+
+function limparFiltros() {
+  document.getElementById('srch').value = '';
+  document.getElementById('f-tipo').value = 'todos';
+  const fa = document.getElementById('f-assessor'); if(fa) fa.value = '';
+  document.getElementById('f-zona').value = '';
+  document.getElementById('f-bairro-vota').value = '';
+  document.getElementById('f-bairro-res').value = '';
+  filterType = 'todos';
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', c.dataset.f==='todos'));
+  renderVoters();
+}
+
+// Zonas vindas das escolas (não só dos já cadastrados)
+function allZonas() {
+  const s = new Set(ESCOLAS.map(e=>String(e.z)));
+  VOTERS.forEach(v=>{ if(v.zona) s.add(String(v.zona)); });
+  return [...s].sort((a,b)=>Number(a)-Number(b));
+}
+
+function allBairrosVota() {
+  return [...new Set(ESCOLAS.map(e=>e.b))].sort();
+}
+
+function populateFilterSelects() {
+  const fz = document.getElementById('f-zona'), curZ = fz.value;
+  fz.innerHTML = '<option value="">Todas as zonas</option>' +
+    allZonas().map(z=>`<option value="${z}"${z===curZ?' selected':''}>${z}</option>`).join('');
+  const fb = document.getElementById('f-bairro-vota'), curB = fb.value;
+  fb.innerHTML = '<option value="">Todos os bairros</option>' +
+    allBairrosVota().map(b=>`<option value="${b}"${b===curB?' selected':''}>${b}</option>`).join('');
+  if(CU.role==='admin') {
+    const fa = document.getElementById('f-assessor'), curA = fa.value;
+    const av = USERS.filter(u=>u.role==='assessor');
+    fa.innerHTML = '<option value="">Todos os assessores</option>' +
+      av.map(a=>`<option value="${a.id}"${a.id===curA?' selected':''}>${a.nome}</option>`).join('');
   }
 }
 
-function getBairroVota(v){const e=ESCOLAS.find(x=>x.n===v.escola);return e?e.b:'';}
-
-function getFilteredVoters(){
-  const q=(document.getElementById('srch')?.value||'').toLowerCase().trim();
-  const fTipo=(document.getElementById('f-tipo')?.value||'todos').trim();
-  const fAss=(document.getElementById('f-assessor')?.value||'').trim();
-  const fZona=(document.getElementById('f-zona')?.value||'').trim();
-  const fBVota=(document.getElementById('f-bairro-vota')?.value||'').toLowerCase().trim();
-  const fBRes=(document.getElementById('f-bairro-res')?.value||'').toLowerCase().trim();
-  let list=[...VOTERS];
-  const chip=filterType!=='todos'?filterType:(fTipo!=='todos'?fTipo:'');
-  if(chip) list=list.filter(v=>v.tipo===chip);
-  if(q) list=list.filter(v=>(v.nome||'').toLowerCase().includes(q)||(v.cpf||'').includes(q)||(v.telefone||'').includes(q));
-  if(fAss) list=list.filter(v=>v.assessor_id===fAss);
-  if(fZona) list=list.filter(v=>(v.zona||'')===fZona);
-  if(fBVota) list=list.filter(v=>getBairroVota(v).toLowerCase()===fBVota);
-  if(fBRes) list=list.filter(v=>(v.endereco||'').toLowerCase().includes(fBRes));
-  return list;
+function getBairroVota(v) {
+  const e = ESCOLAS.find(x=>x.n===v.escola);
+  return e ? e.b : '';
 }
 
-// BCOORDS
-const BCOORDS={"CENTRO":{lat:-23.461,lng:-46.533},"MACEDO":{lat:-23.454,lng:-46.521},"JARDIM PINHAL":{lat:-23.465,lng:-46.545},"JARDIM PARAVENTI":{lat:-23.470,lng:-46.548},"JARDIM ADRIANA":{lat:-23.472,lng:-46.554},"JARDIM COCAIA":{lat:-23.468,lng:-46.557},"JARDIM BOM CLIMA":{lat:-23.480,lng:-46.560},"PARQUE RENATO MAIA":{lat:-23.456,lng:-46.528},"JARDIM SAO PAULO":{lat:-23.467,lng:-46.540},"JARDIM SANTA CLARA":{lat:-23.464,lng:-46.552},"JARDIM VALERIA":{lat:-23.476,lng:-46.561},"VILA SAO JORGE":{lat:-23.452,lng:-46.538},"JARDIM DOS AFONSOS":{lat:-23.478,lng:-46.568},"VILA BREMEN":{lat:-23.449,lng:-46.530},"COCAIA":{lat:-23.469,lng:-46.558},"VILA PROGRESSO":{lat:-23.457,lng:-46.527},"PARQUE CECAP":{lat:-23.462,lng:-46.563},"VILA RIO DE JANEIRO":{lat:-23.453,lng:-46.515},"JARDIM NOVA CIDADE":{lat:-23.441,lng:-46.499},"CONJUNTO MARCOS FREIRE":{lat:-23.436,lng:-46.487},"JARDIM LEBLON":{lat:-23.447,lng:-46.494},"PARQUE JUREMA":{lat:-23.439,lng:-46.480},"JARDIM CENTENARIO":{lat:-23.444,lng:-46.491},"PARQUE DAS NACOES":{lat:-23.443,lng:-46.503},"CIDADE PARQUE ALVORADA":{lat:-23.432,lng:-46.475},"JARDIM GUARACY":{lat:-23.449,lng:-46.497},"JARDIM ARUJA":{lat:-23.434,lng:-46.502},"JARDIM JACY":{lat:-23.438,lng:-46.485},"PARQUE SAO MIGUEL":{lat:-23.446,lng:-46.496},"CIDADE ARACILIA":{lat:-23.430,lng:-46.470},"JARDIM SANTO AFONSO":{lat:-23.441,lng:-46.490},"PARQUE MARIA HELENA":{lat:-23.435,lng:-46.479},"GOPOUVA":{lat:-23.474,lng:-46.523},"JARDIM VILA GALVAO":{lat:-23.468,lng:-46.516},"JARDIM MUNHOZ":{lat:-23.480,lng:-46.531},"VILA SAO RAFAEL":{lat:-23.471,lng:-46.507},"PONTE GRANDE":{lat:-23.477,lng:-46.519},"JARDIM TRANQUILIDADE":{lat:-23.482,lng:-46.514},"VILA ENDRES":{lat:-23.485,lng:-46.508},"JARDIM DOURADO":{lat:-23.476,lng:-46.511},"VILA AUGUSTA":{lat:-23.469,lng:-46.499},"VILA DAS PALMEIRAS":{lat:-23.463,lng:-46.505},"JARDIM SANTA FRANCISCA":{lat:-23.458,lng:-46.510},"JARDIM SANTA RITA":{lat:-23.491,lng:-46.551},"JARDIM CAPRI":{lat:-23.486,lng:-46.556},"VILA NOSSA SENHORA DE FATIMA":{lat:-23.489,lng:-46.560},"VILA FLORIDA":{lat:-23.493,lng:-46.548},"PARQUE MIKAIL":{lat:-23.488,lng:-46.543},"PARQUE PRIMAVERA":{lat:-23.494,lng:-46.540},"JARDIM SAO DOMINGOS":{lat:-23.497,lng:-46.554},"JARDIM ALMEIDA PRADO":{lat:-23.500,lng:-46.547},"JARDIM AMERICA":{lat:-23.496,lng:-46.538},"JARDIM PARAISO":{lat:-23.499,lng:-46.535},"JARDIM NOVA TABOCO":{lat:-23.502,lng:-46.543},"JARDIM SANTA LIDIA":{lat:-23.492,lng:-46.558},"JARDIM TAMASSIA":{lat:-23.504,lng:-46.549},"VILA GALVAO":{lat:-23.510,lng:-46.523},"VILA ROSALIA":{lat:-23.514,lng:-46.519},"RECREIO SAO JORGE":{lat:-23.517,lng:-46.528},"JARDIM FLOR DA MONTANHA":{lat:-23.520,lng:-46.535},"JARDIM ALIANCA":{lat:-23.512,lng:-46.514},"JARDIM SANTA MENA":{lat:-23.507,lng:-46.530},"PARQUE CONTINENTAL III":{lat:-23.505,lng:-46.517},"PARQUE CONTINENTAL II":{lat:-23.508,lng:-46.520},"PARQUE CONTINENTAL IV":{lat:-23.503,lng:-46.515},"JARDIM ROSA DE FRANCA":{lat:-23.506,lng:-46.526},"JARDIM SAO LUIS":{lat:-23.511,lng:-46.516},"JARDIM MOREIRA":{lat:-23.513,lng:-46.533},"JARDIM BETEL":{lat:-23.516,lng:-46.512},"JARDIM LAS VEGAS":{lat:-23.519,lng:-46.539},"JARDIM PALMIRA":{lat:-23.509,lng:-46.537},"BONSUCESSO":{lat:-23.485,lng:-46.586},"PARQUE SANTOS DUMONT":{lat:-23.490,lng:-46.578},"VILA NOVA BONSUCESSO":{lat:-23.487,lng:-46.591},"JARDIM LENIZE":{lat:-23.493,lng:-46.583},"JARDIM SAO JOAO":{lat:-23.496,lng:-46.575},"PONTE ALTA":{lat:-23.500,lng:-46.568},"CONJUNTO HAROLDO VELOSO":{lat:-23.480,lng:-46.596},"CIDADE SOBERANA":{lat:-23.483,lng:-46.571},"JARDIM FORTALEZA":{lat:-23.478,lng:-46.564},"JARDIM SANTA TEREZINHA":{lat:-23.474,lng:-46.570},"CIDADE JARDIM CUMBICA":{lat:-23.424,lng:-46.461},"JARDIM MARIA DIRCE":{lat:-23.418,lng:-46.465},"JARDIM PRESIDENTE DUTRA":{lat:-23.413,lng:-46.453},"JARDIM CUMBICA":{lat:-23.421,lng:-46.458},"VILA NOVA CUMBICA":{lat:-23.427,lng:-46.455},"VILA PARAISO":{lat:-23.430,lng:-46.448},"RESIDENCIAL PARQUE CUMBICA":{lat:-23.415,lng:-46.469},"JARDIM DAS NACOES":{lat:-23.436,lng:-46.443},"JARDIM CASTANHA":{lat:-23.440,lng:-46.450},"PARQUE UIRAPURU":{lat:-23.417,lng:-46.459},"CONJUNTO INOCOOP":{lat:-23.409,lng:-46.455},"JARDIM OTTAWA":{lat:-23.443,lng:-46.462},"PRESIDENTE DUTRA":{lat:-23.410,lng:-46.460}};
-
-const ESCOLAS = [{"n":"COLGIO DA POLCIA MILITAR - UNIDADE GUARULHOS","z":176,"b":"CENTRO","s":["410","418","424","429","436","441","445","450","451","455","456","458","461","463","465","470","476","479","481"]},{"n":"COLGIO ENIAC","z":176,"b":"CENTRO","s":["10","12","14","16","18","24","25","26","27","28","29","197","247","249","287","332"]},{"n":"COLEGIO T. PARTHENON - UNIDADE I","z":176,"b":"MACEDO","s":["312","333","354","368","386","398","412","420","427","437","443","449","454","460","469","484","490","498"]},{"n":"E.E. LYDIA KITZ MOREIRA","z":176,"b":"JARDIM SANTA CLARA","s":["282","286","291","305","309","317","329","336","344","351","359","365","374","380","389","397","403"]},{"n":"E.E. PASTOR AMARO JOS DOS SANTOS","z":176,"b":"JARDIM SAO PAULO","s":["80","81","82","83","208","237","270","495"]},{"n":"E.E. PEDRO ROBERTO VAGHI","z":176,"b":"JARDIM VALERIA","s":["486","492"]},{"n":"E.E. PROF BENEDITA DE OLIVEIRA ALE","z":176,"b":"JARDIM COCAIA","s":["169","177","182","186","191","192","202","207","482","489"]},{"n":"E.E. PROFESSOR MOTOOKA","z":176,"b":"JARDIM ADRIANA","s":["316","335","339","343","347","348","358","363","366","373","377","382","387","391","394"]},{"n":"E.E. SANTA CECLIA","z":176,"b":"JARDIM COCAIA","s":["216","229","254","256","402","406","413","416","426","434","442"]},{"n":"E.P.G CRISPINIANO SOARES","z":176,"b":"JARDIM BOM CLIMA","s":["310","311","340","349","361","370","383","392"]},{"n":"E.P.G. ANTONIO APARECIDO MAGALHAES","z":176,"b":"JARDIM PARAVENTI","s":["408","417","431","446","473"]},{"n":"E.P.G. JOSE CARLOS DA SILVA","z":176,"b":"JARDIM ADRIANA","s":["409","411","419","423","428","433","440","444","448","452","457","459","462","464","467"]},{"n":"E.P.G. TIA NASTCIA","z":176,"b":"JARDIM PINHAL","s":["171","179","189","190"]},{"n":"EE PADRE CONRADO SIVILA ALSINA","z":176,"b":"JARDIM BOM CLIMA","s":["84","85","86","87","88","89","90","91","92","93","94","95","96","97","236","266","279","494"]},{"n":"EE. FRANCISCO ANTUNES FILHO","z":176,"b":"PARQUE CECAP","s":["119","120","121","122","123","124","125","126","127","128","129","130","233","269","299","331","357","401"]},{"n":"EE. CAPISTRANO DE ABREU","z":176,"b":"CENTRO","s":["19","20","21","22","23","175","248","334"]},{"n":"EE. CONSELHEIRO CRISPINIANO","z":176,"b":"CENTRO","s":["30","31","32","33","178","196","241","283","325","353","375","388","399","415","422","438","453","466"]},{"n":"EE. FIORAVANTE IERVOLINO","z":176,"b":"JARDIM PARAVENTI","s":["57","58","59","60","61","62","63","64","65","66","239","262"]},{"n":"EE. MARIA LEONI","z":176,"b":"JARDIM PINHAL","s":["39","40","41","42","43","44","45","46","47","48","49","50","51","52","53","54","55","56"]},{"n":"EE. PROF ALICE CHUERY","z":176,"b":"VILA SAO JORGE","s":["111","112","113","114","115","116","117","118","188","214","225","234","264","284","302","323","341","356","369","381","395"]},{"n":"EE. PROF DULCE BREVES NEVES","z":176,"b":"JARDIM DOS AFONSOS","s":["306","314","320","326","483"]},{"n":"EE. PROF FRANCISCA BATISTA TRINDADE","z":176,"b":"MACEDO","s":["168","194","204","242","293","327","384","432","468"]},{"n":"EE. PROF HILDA PRATES GALLO","z":176,"b":"COCAIA","s":["172","184","198","200","201","203","206","211","212","215","218","221","223","227","228","231","271","280","290","303"]},{"n":"EE. PROF MARIA HELENA BARBOSA MARTINS","z":176,"b":"VILA BREMEN","s":["176","199","205","213","217","226","230","255","267","275","288","307","318","330","338","346","355","362","367","378","385"]},{"n":"EE. PROF FREDERICO DE BARROS BROTERO","z":176,"b":"VILA PROGRESSO","s":["34","35","36","37","38","210","222","240","278","321","345","364","376","393","407"]},{"n":"EE. PROF SILVRIO BERTONI","z":176,"b":"JARDIM SAO PAULO","s":["67","68","69","70","71","72","73","74","75","76","77","78","79","220","238"]},{"n":"EE. VEREADOR ANTONIO DE RE","z":176,"b":"MACEDO","s":["98","99","100","101","102","103","104","105","106","107","108","109","110","170","181","235","265"]},{"n":"EE. VEREADOR ELSIO DE OLIVEIRA NEVES","z":176,"b":"PARQUE CECAP","s":["131","132","133","134","135","136","137","187","209","224","246","258","304","352","396"]},{"n":"ESCOLA SENAI HERMENEGILDO CAMPOS","z":176,"b":"PARQUE RENATO MAIA","s":["252","274","277","294","295","315","328","342"]},{"n":"IFSP - INSTITUTO FEDERAL SP","z":176,"b":"VILA RIO DE JANEIRO","s":["251","263","276","292","308","324","474","488","493"]},{"n":"SERVIO SOCIAL DA INDSTRIA - SESI","z":176,"b":"JARDIM ADRIANA","s":["253","257","259","260","261","281","285","296","475","477","480","485","491","497"]},{"n":"UNIVERSIDADE DE GUARULHOS - UNG","z":176,"b":"CENTRO","s":["1","2","3","4","5","6","7","8","9","173","183","193","232","268","298","319","337","371","414","430"]},{"n":"EE LOUIS BRAILLE","z":185,"b":"JARDIM ANGLICA","s":["422"]},{"n":"EE. AGOSTINHO CANO","z":185,"b":"JARDIM NOVA CIDADE","s":["194","195","196","197","198","199","200","201","202","203","268","283","292","303"]},{"n":"EE. ANNA LAMBERGA ZEGLIO","z":185,"b":"CONJUNTO MARCOS FREIRE","s":["212","213","214","215","216","217","218","219","220","221","266","302","336","362","396","411"]},{"n":"EE. BARTHOLOMEU DE CARLOS","z":185,"b":"JARDIM LEBLON","s":["51","52","53","54","55","56","57","58","59","60","415","417","430"]},{"n":"EE. DEPUTADO MAURCIO GOULART","z":185,"b":"VILA DINAMARCA","s":["35","36","37","38","39","40","261","269","306","343","379","391","401","427"]},{"n":"EE. GUILHERMINO RODRIGUES DE LIMA","z":185,"b":"JARDIM ARUJA","s":["106","107","108","109","110","111","112","113","114","115","116","117","305"]},{"n":"EE. ORLANDO MINELLA","z":185,"b":"JARDIM JACY","s":["74","75","76","77","78","79","80","81","82","83","406","428"]},{"n":"EE. PADRE AUGUST STAUDER","z":185,"b":"CIDADE ARACILIA","s":["41","42","43","44","271","272","274","304"]},{"n":"EE. PARQUE JUREMA III","z":185,"b":"PARQUE JUREMA","s":["234","235","236","237","238","239","240","241","242","243","244","245","257","258","273"]},{"n":"EE. PASTOR JOO NUNES","z":185,"b":"JARDIM CENTENARIO","s":["132","133","134","135","136","137","138","139","140","141","259","282","315","335","359","383"]},{"n":"EE. PIMENTAS VII","z":185,"b":"CONJUNTO MARCOS FREIRE","s":["249","250","251","252","253","254","255","256","260","276","323","342","354","365","377","393","410"]},{"n":"EE. PROF ALAYDE MARIA VICENTE","z":185,"b":"JARDIM MARIA ALICE","s":["64","65","66","67","68","69","70","71","72","73","262","277","328"]},{"n":"EE. PROF MARIA APARECIDA FELIX PORTO","z":185,"b":"PARQUE DAS NACOES","s":["168","169","170","171","172","173","174","175","176","177","265","280","312","367","384","394","404","407","418"]},{"n":"EE. PROF MARIA APARECIDA RODRIGUES","z":185,"b":"CIDADE PARQUE ALVORADA","s":["16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","294"]},{"n":"EE. PROF MARIA HILDA ORNELAS DE OLIVEIRA","z":185,"b":"JARDIM SANTO AFONSO","s":["45","46","47","48","49","50","263","278","345","390","409"]},{"n":"EE. PROF MARINHA FERREIRA DO NASCIMENTO","z":185,"b":"JARDIM LEBLON","s":["184","185","186","187","188","189","190","191","192","193","288"]},{"n":"EE. PROF THEREZINHA CLOSA ELEUTERIO","z":185,"b":"PARQUE MARIA HELENA","s":["2","3","4","5","6","7","8","9","10","11","12","13","14","15","293","299","307"]},{"n":"EE. PROFESSOR MARIO NAKATA","z":185,"b":"PARQUE SAO MIGUEL","s":["153","154","155","156","157","158","159","279","318","356","433"]},{"n":"EE. PROF ANTONIO VIANA DE SOUZA","z":185,"b":"PARQUE JUREMA","s":["118","119","120","121","122","123","124","125","126","127","128","129","130","131"]},{"n":"EE. PROF CID AUGUSTO GUELLI","z":185,"b":"JARDIM ANNY","s":["84","85","287","291","297","311","314","329","344","350","360","370","381"]},{"n":"EE. PROF LICINIO CARPINELLI","z":185,"b":"JARDIM CENTENARIO","s":["178","179","180","181","182","183","267","290","308","326","349","375","387","398","402"]},{"n":"EPG DORIVAL CAYMMI","z":185,"b":"JARDIM GUARACY","s":["1","86","87","88","89","90","91","92","93","94","95","96"]},{"n":"EPG DORCELINA FOLADOR","z":185,"b":"JARDIM ANGLICA","s":["246","247","248","270","289","298","322","338","358","376","386"]},{"n":"EPG SOPHIA FANTAZZINI CECCHINATO","z":185,"b":"JARDIM ANGLICA","s":["97","98","99","100","101","102","103","104","105","301"]},{"n":"COLGIO ADVENTISTA DE GUARULHOS","z":278,"b":"GOPOUVA","s":["139","140","141","142","143","144","145","146","147","148","149","150","151","463"]},{"n":"COLGIO FARIAS BRITO","z":278,"b":"GOPOUVA","s":["322","323","344","349","375","384","385","396","404","461","466","470"]},{"n":"COLEGIO GUILHERME DE ALMEIDA","z":278,"b":"GOPOUVA","s":["334","340","341","352","357","361","366","376","378","381","386","392"]},{"n":"EE. CAPITAO PM ALBERTO MENDES JUNIOR","z":278,"b":"JARDIM VILA GALVAO","s":["91","92","93","94","95","96","97","98","99","100"]},{"n":"EE. CARLOS MACHADO BITTENCOURT","z":278,"b":"JARDIM MUNHOZ","s":["216","217","218","219","220","221","222","223","224","225","271","319","336"]},{"n":"EE. CORONEL ARY GOMES","z":278,"b":"VILA SAO RAFAEL","s":["121","122","123","124","125","126","127","128","129","130","131","132","133","134","135","136","262","315","397"]},{"n":"EE. DOM PAULO ROLIM LOUREIRO","z":278,"b":"PONTE GRANDE","s":["198","199","200","201","202","203","204","205","206","207","208","209","210","211","212","241","256","276","309","331","369","373","383","399"]},{"n":"EE. RICO VERISSIMO","z":278,"b":"VILA ENDRES","s":["187","188","189","190","191","192","266","311","330","348","360","372","395","403"]},{"n":"EE. JOO ALVARES DE SIQUEIRA BUENO","z":278,"b":"JARDIM TRANQUILIDADE","s":["108","109","110","111","112","113","114","115","116","117","118","119","120","260","265","269"]},{"n":"EE. JOO CRISPINIANO SOARES","z":278,"b":"VILA AUGUSTA","s":["439","440","441","442","443","444","445","446","447","449","462","464"]},{"n":"EE. PROFESSOR ENNIO CHIESA","z":278,"b":"JARDIM DOURADO","s":["169","170","171","172","173","174","175","176","177","178","179","180","181","398"]},{"n":"EE. PROFESSOR FABIO FANUCCHI","z":278,"b":"JARDIM VILA GALVAO","s":["101","102","103","104","105","106","107","245","253","263","293","316","328","370"]},{"n":"EE. PROF JOSE SCARAMELLI","z":278,"b":"VILA DAS PALMEIRAS","s":["419","420","421","422","423","424","425","426","427","428","429","430","431","432","433"]},{"n":"EE. PROF PAULO NOGUEIRA","z":278,"b":"JARDIM SANTA FRANCISCA","s":["418","450","451","452","453","454","455","456","457","458","459"]},{"n":"EE. ROTARY","z":278,"b":"VILA ENDRES","s":["193","194","195","196","197","252","310","350"]},{"n":"COLGIO GUARULHOS","z":279,"b":"JARDIM CAPRI","s":["577","598","604","619","638","650","663"]},{"n":"EE. ALLYRIO DE FIGUEIREDO BRASIL","z":279,"b":"VILA NOSSA SENHORA DE FATIMA","s":["79","80","81","82","83","84","85","86","87","88","89","350","472","489","495","513","525"]},{"n":"EE. FLVIO XAVIER ARANTES","z":279,"b":"JARDIM SANTA RITA","s":["29","30","31","32","33","34","35","36","37","38","39","40","41","42"]},{"n":"EE. JARDIM SANTA LIDIA","z":279,"b":"JARDIM SANTA LIDIA","s":["539","551","560","572","584","594","607","612","618","626","631","646","649","654","662","675"]},{"n":"EE. MARIA CELIA FALCAO RODRIGUES","z":279,"b":"PARQUE MIKAIL","s":["522","528","534","536","543","549","555","563","576","582","588","599","606","611","620","627","637"]},{"n":"EE. PADRE ANTONIO VELASCO ARAGON","z":279,"b":"JARDIM SAO DOMINGOS","s":["290","365","383","402","424","439","451","456","459","462","465","467","469","521","530","581"]},{"n":"EE. PROF JOAO LUIZ DE GODOY MOREIRA","z":279,"b":"JARDIM ALMEIDA PRADO","s":["292","316","340","352","408","460","477","496","520","542","562","587","608","614","630","647","660"]},{"n":"EE. PROF JOAQUIM GARCIA SALVADOR","z":279,"b":"JARDIM AMERICA","s":["298","337","386","463","479","514","537","564","590","613"]},{"n":"EE. PROF MILTON CERNACH","z":279,"b":"JARDIM PARAISO","s":["291","321","339","359","368","384","392","401","411","441","455","466","475","484","488","492","500","501","512"]},{"n":"EE. PROFA. MARIA ANGLICA SOAVE","z":279,"b":"JARDIM NOVA TABOCO","s":["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","288","317","334","344"]},{"n":"EE. VALDIVINO DE CASTRO PEREIRA","z":279,"b":"VILA FLORIDA","s":["67","68","69","70","71","72","73","74","75","76","77","78","471","473"]},{"n":"EPG. AMADOR BUENO","z":279,"b":"JARDIM TAMASSIA","s":["541","547","553","559","569"]},{"n":"EPG. MARIO LAGO","z":279,"b":"PARQUE PRIMAVERA","s":["641","651","658","664","671","677","681","684","688","690"]},{"n":"APAE GUARULHOS UNIDADE 2","z":393,"b":"JARDIM SANTA MENA","s":["280","281","298","314","328","344","377","384","391","412"]},{"n":"COLGIO ADVENTISTA DE VILA GALVAO","z":393,"b":"VILA GALVAO","s":["243","251","256","264","277","289","312","358","393","409"]},{"n":"COLGIO MAHA-DEI","z":393,"b":"VILA GALVAO","s":["275","287","295","308","319","346","363","380","387","398"]},{"n":"EE. BOM PASTOR","z":393,"b":"RECREIO SAO JORGE","s":["154","155","158","164","170","188","197","212","224","246"]},{"n":"EE. CARLOS GIULIETTO","z":393,"b":"JARDIM FLOR DA MONTANHA","s":["167","187","210","228","236","247","258","266","336","355","365","370","376","379","405"]},{"n":"EE. CLARICE LISPECTOR","z":393,"b":"JARDIM ALIANCA","s":["99","100","101","102","103","104"]},{"n":"EE. FRANCISCO MILTON DE ANDRADE","z":393,"b":"PARQUE CONTINENTAL III","s":["222","235","257","270","297","316","330","347","364","378","385","397"]},{"n":"EE. JOCILA PEREIRA GUIMARAES","z":393,"b":"VILA GALVAO","s":["75","76","77","78","79","80","81","82","83","84","85","86","174","194","230","284"]},{"n":"EE. JOSE ALVES DE CERQUEIRA CESAR","z":393,"b":"VILA ROSALIA","s":["40","41","42","43","44","45","46","47","48","175","200","227","237","286","309"]},{"n":"EE. JOSE MARUN ATALLA","z":393,"b":"PARQUE CONTINENTAL IV","s":["21","22","23","24","25","26","160","165","178","190","198","201","213"]},{"n":"EE. JUVENAL RAMOS BARBOSA","z":393,"b":"JARDIM ROSA DE FRANCA","s":["87","88","89","90","91","92","93","94","95","96","97","98","159","173","193","211","343"]},{"n":"EE. PROF. HOMERO RUBENS DE SA","z":393,"b":"VILA GALVAO","s":["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","176","203","226"]},{"n":"EE. PROF. JOSE ROBERTO FRIEBOLIM","z":393,"b":"VILA ROSALIA","s":["49","50","51","52","53","54","55","56","57","58","59","60","209"]},{"n":"EE. PROFA. ROBERTA MARIA LOPES CHAVES","z":393,"b":"JARDIM BETEL","s":["166","177","189","195","206","215","220","238","359","373"]},{"n":"EPG CESAR LATTES","z":393,"b":"PARQUE CONTINENTAL II","s":["27","28","29","30","31","32","157","161","171","216","229","244","261","285","306","324"]},{"n":"EPG MARIO QUINTANA","z":393,"b":"JARDIM LAS VEGAS","s":["274","276","304","323","337","349","356","367","375","382","392","403"]},{"n":"UNIMESP","z":393,"b":"VILA ROSALIA","s":["116","117","118","119","120","121","122","123","124","125","126","127","128","129","130","131","132","133","134","135","136","137","138","139","140","141","142","143","144","145","146","147","148","149","150","151","172","192","214"]},{"n":"EE. BRIGADEIRO HAROLDO VELOSO","z":394,"b":"CONJUNTO HAROLDO VELOSO","s":["20","21","22","23","24","25","26","27","28","153","157","180","213","264","307","359","411","457","486","576"]},{"n":"EE. ESTEVAM DIAS TAVARES","z":394,"b":"BONSUCESSO","s":["1","2","3","4","5","6","7","8","9"]},{"n":"EE. PARQUE SANTOS DUMONT","z":394,"b":"PARQUE SANTOS DUMONT","s":["260","276","295","330","349","363","380","400","413","430","444","462","472","516","561","591"]},{"n":"EE. PROF. ARTHUR MARRET","z":394,"b":"VILA NOVA BONSUCESSO","s":["40","41","42","43","44","45","150","164","171","498"]},{"n":"EE. PROF. CYRO BARREIROS","z":394,"b":"JARDIM LENIZE","s":["134","135","136","137","138","139","140","141","161","167","177","190","215","228","249"]},{"n":"EE. PROF. HELIO POLESEL","z":394,"b":"VILA NOVA BONSUCESSO","s":["33","34","35","36","37","38","39","449","465","479","506","521","537"]},{"n":"EE. PROF. HERNANI FURINI","z":394,"b":"JARDIM SAO JOAO","s":["193","200","220","245","259","274","287","297","327","343","368","399","434","454","523"]},{"n":"EE. PROFA. SALIME MUDEH","z":394,"b":"JARDIM SAO JOAO","s":["92","93","94","95","96","97","98","99","100","101","102","103","104","105","106","107"]},{"n":"EE. SANDI MIYAKE CAPITAO AVIADOR","z":394,"b":"JARDIM SAO JOAO","s":["77","78","79","80","81","82","83","84","85","86","87","88","89","90","91"]},{"n":"EE. CIDADE SERODIO","z":394,"b":"JARDIM SANTO EXPEDITO","s":["235","265","283","584"]},{"n":"EE. JARDIM FORTALEZA II","z":394,"b":"JARDIM FORTALEZA","s":["131","132","133","156","173","202","221","240","269","286","316","493","525","553","574","586"]},{"n":"EE. ANA MARIA HOPPNER GOMES","z":394,"b":"CIDADE SOBERANA","s":["184","196","211","227","248","345","369","379","389","396","408","415","426","433","439","509","587"]},{"n":"EE. IDALINA LADEIRA FERREIRA","z":394,"b":"CIDADE SOBERANA","s":["450","460","466","477","487","501","522","529","544","547","551","558","562","568"]},{"n":"EE. OSWALDO SAMPAIO ALVES","z":395,"b":"JARDIM MARIA DIRCE","s":["88","89","90","91","92","93","94","95","96","97","98","99","100","101"]},{"n":"EE. COMANDANTE JOAO RIBEIRO DE BARROS","z":395,"b":"CIDADE JARDIM CUMBICA","s":["74","75","76","77","78","79","80","81","82","83","84","85","86","87"]},{"n":"EE. HUGO DE AGUIAR","z":395,"b":"VILA PARAISO","s":["151","160","170","177","185","198","313","335","357","376","399","423","470","474","503","504","505"]},{"n":"EE. JARDIM NOVA CUMBICA DOIS","z":395,"b":"VILA NOVA CUMBICA","s":["187","304","306","309","323","337","349","355","362","369","377","394","406","437","471","473"]},{"n":"EE. JOO DE ALMEIDA BARBOSA","z":395,"b":"VILA NOVA CUMBICA","s":["192","217","224","233","238","252","280","287","642"]},{"n":"EE. PADRE BRUNO RICCO","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["528","529","530","531","610","611","612","613","614","615","616","617","618","619","632","636","641","645"]},{"n":"EE. PADRE VALENTIM GONZALES ALONSO","z":395,"b":"PARQUE UIRAPURU","s":["453","454","455","456","457","458","459","460","461","462","463","464","465","466","472","477"]},{"n":"EE. PREFEITO ANTONIO PRATICI","z":395,"b":"CONJUNTO INOCOOP","s":["532","533","534","535","536","537","538","539","540","541","542","543","544","545","546","547"]},{"n":"EE. PROF JOAO CAVALHEIRO SALEM","z":395,"b":"JARDIM CUMBICA","s":["32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","433"]},{"n":"EE. SEBASTIAO WALTER FUSCO","z":395,"b":"CIDADE JARDIM CUMBICA","s":["47","48","49","50","51","52","53","54","55","56","57","58","59","60","61","62"]},{"n":"EE. VICTOR CIVITA","z":395,"b":"CIDADE JARDIM CUMBICA","s":["318","340","408","479","646"]},{"n":"EE. INOCOOP II","z":395,"b":"RESIDENCIAL PARQUE CUMBICA","s":["509","510","511","512","513","514","515","516","640","649"]},{"n":"EE. JARDIM MARIA DIRCE 3","z":395,"b":"JARDIM MARIA DIRCE","s":["517","518","519","520","521","522","523","524","525","526","527","597","598","627"]},{"n":"EE. PROFA ZILDA ROMEIRO P.M. DA SILVA","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["559","560","561","562","563","564","565","566","567","568","569","570","571","572","573","574","575","576","577","578","579","580","581","582","583"]},{"n":"EE. PROFA CACILDA CACAPAVA DE OLIVEIRA","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["548","549","550","551","552","553","554","555","556","557","558"]},{"n":"EM. ANISIO TEIXEIRA","z":395,"b":"VILA PARAISO","s":["483","486","490","495","500","508","631","638","643","650","654"]},{"n":"EPG. JORGE AMADO","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["623","624","625","626","629"]},{"n":"EPG. PERSEU ABRAMO","z":395,"b":"JARDIM PRESIDENTE DUTRA","s":["584","585","586","587","588","589","590","591","592","593"]},{"n":"EPG. NISE DA SILVEIRA","z":395,"b":"JARDIM OTTAWA","s":["146","150","200","268","301","350","402","426"]},{"n":"EPG. MARIAZINHA RESENDE FUSARI","z":395,"b":"PRESIDENTE DUTRA","s":["594","595","596","634","651","652"]},{"n":"EPG. VER. CARLOS FRANCHIN","z":395,"b":"JARDIM CUMBICA","s":["628","630","635","639","644","647","653","656"]},{"n":"EPG. ZELIA GATAI","z":395,"b":"PRESIDENTE DUTRA","s":["620","621","622","633","648"]}];
-
-  const fZona   = (document.getElementById('f-zona')?.value||'').trim();
-  const fBVota  = (document.getElementById('f-bairro-vota')?.value||'').toLowerCase().trim();
-  const fBRes   = (document.getElementById('f-bairro-res')?.value||'').toLowerCase().trim();
-
+function getFilteredVoters() {
+  const q      = (document.getElementById('srch')?.value||'').toLowerCase().trim();
+  const fTipo  = (document.getElementById('f-tipo')?.value||'todos').trim();
+  const fAss   = (document.getElementById('f-assessor')?.value||'').trim();
+  const fZona  = (document.getElementById('f-zona')?.value||'').trim();
+  const fBVota = (document.getElementById('f-bairro-vota')?.value||'').toLowerCase().trim();
+  const fBRes  = (document.getElementById('f-bairro-res')?.value||'').toLowerCase().trim();
   let list = [...VOTERS];
-  const chipActive = filterType !== 'todos' ? filterType : fTipo;
-  if(chipActive) list = list.filter(v=>v.tipo===chipActive);
-  if(q) list = list.filter(v=>
-    (v.nome||'').toLowerCase().includes(q) ||
-    (v.cpf||'').includes(q) ||
-    (v.telefone||'').includes(q)
-  );
-  if(fAss) list = list.filter(v=>v.assessor_id===fAss);
-  if(fZona) list = list.filter(v=>(v.zona||'')===fZona);
+  const chip = filterType!=='todos' ? filterType : (fTipo!=='todos' ? fTipo : '');
+  if(chip)   list = list.filter(v=>v.tipo===chip);
+  if(q)      list = list.filter(v=>(v.nome||'').toLowerCase().includes(q)||(v.cpf||'').includes(q)||(v.telefone||'').includes(q));
+  if(fAss)   list = list.filter(v=>v.assessor_id===fAss);
+  if(fZona)  list = list.filter(v=>String(v.zona||'')===fZona);
   if(fBVota) list = list.filter(v=>getBairroVota(v).toLowerCase()===fBVota);
-  if(fBRes) list = list.filter(v=>(v.endereco||'').toLowerCase().includes(fBRes));
+  if(fBRes)  list = list.filter(v=>(v.endereco||'').toLowerCase().includes(fBRes));
   return list;
 }
 
@@ -837,12 +859,11 @@ function renderVoters() {
   const rc = document.getElementById('result-count');
   if(rc) {
     const q = document.getElementById('srch')?.value||'';
-    const fTipo = document.getElementById('f-tipo')?.value||'';
-    const fAss = document.getElementById('f-assessor')?.value||'';
     const fZona = document.getElementById('f-zona')?.value||'';
+    const fAss = document.getElementById('f-assessor')?.value||'';
     const fBVota = document.getElementById('f-bairro-vota')?.value||'';
     const fBRes = document.getElementById('f-bairro-res')?.value||'';
-    const hasFilter = q||fTipo||fAss||fZona||fBVota||fBRes||filterType!=='todos';
+    const hasFilter = q||fAss||fZona||fBVota||fBRes||filterType!=='todos';
     rc.textContent = hasFilter
       ? `${list.length} resultado${list.length!==1?'s':''} encontrado${list.length!==1?'s':''}`
       : `${list.length} cadastrado${list.length!==1?'s':''}`;
@@ -872,16 +893,18 @@ function renderVoters() {
 }
 
 function getUName(id) {
-  const u = USERS.find(x=>x.id===id) || (CU.id===id?CU:null);
+  const u = USERS.find(x=>x.id===id) || (CU && CU.id===id ? CU : null);
   return u ? u.nome : '–';
 }
 
+// ===== CADASTRO =====
 function openAddVoter() {
   editingId = null;
   document.getElementById('mv-title').textContent = '＋ Novo Eleitor';
-  ['v-nome','v-cpf','v-tel','v-email','v-titulo','v-escola','v-zona','v-end','v-obs'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['v-nome','v-cpf','v-tel','v-email','v-titulo','v-escola','v-zona','v-secao','v-end','v-obs']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('v-tipo').value = 'eleitor';
-  document.getElementById('v-secao').innerHTML = '<option value="">– Seção –</option>';
+  document.getElementById('secoes-list').innerHTML = '';
   openOv('ov-voter');
 }
 
@@ -890,37 +913,39 @@ function openEdit(id) {
   const v = VOTERS.find(x=>x.id===id); if(!v) return;
   editingId = id;
   document.getElementById('mv-title').textContent = '✏️ Editar Eleitor';
-  document.getElementById('v-nome').value = v.nome||'';
-  document.getElementById('v-cpf').value = v.cpf||'';
-  document.getElementById('v-tel').value = v.telefone||'';
-  document.getElementById('v-email').value = v.email||'';
+  document.getElementById('v-nome').value   = v.nome||'';
+  document.getElementById('v-cpf').value    = v.cpf||'';
+  document.getElementById('v-tel').value    = v.telefone||'';
+  document.getElementById('v-email').value  = v.email||'';
   document.getElementById('v-titulo').value = v.titulo||'';
-  document.getElementById('v-tipo').value = v.tipo||'eleitor';
+  document.getElementById('v-tipo').value   = v.tipo||'eleitor';
   document.getElementById('v-escola').value = v.escola||'';
-  document.getElementById('v-zona').value = v.zona||'';
-  document.getElementById('v-end').value = v.endereco||'';
-  document.getElementById('v-obs').value = v.observacoes||'';
-  if(v.escola) { const e=ESCOLAS.find(x=>x.n===v.escola); if(e) populateSecoes(e.s, v.secao||''); }
+  document.getElementById('v-zona').value   = v.zona||'';
+  document.getElementById('v-secao').value  = v.secao||'';
+  document.getElementById('v-end').value    = v.endereco||'';
+  document.getElementById('v-obs').value    = v.observacoes||'';
+  document.getElementById('secoes-list').innerHTML = '';
+  if(v.escola) { const e = ESCOLAS.find(x=>x.n===v.escola); if(e) populateSecoes(e.s, v.secao||''); }
   openOv('ov-voter');
 }
 
 async function saveVoter() {
-  const nome   = document.getElementById('v-nome').value.trim();
-  const cpf    = document.getElementById('v-cpf').value.trim();
-  const tel    = document.getElementById('v-tel').value.trim();
-  const titulo = document.getElementById('v-titulo').value.trim();
-  if(!nome||!cpf||!tel||!titulo) { toast('Preencha todos os campos obrigatórios (*)','err'); return; }
+  const nome = document.getElementById('v-nome').value.trim();
+  const cpf  = document.getElementById('v-cpf').value.trim();
+  const tel  = document.getElementById('v-tel').value.trim();
+  if(!nome||!cpf||!tel) { toast('Preencha nome, CPF e telefone','err'); return; }
+  if(!CU||!CU.id) { toast('Sessão expirada. Entre novamente.','err'); return; }
   const btn = document.getElementById('mv-save-btn');
   btn.innerHTML = '<span class="spin"></span> Salvando...'; btn.disabled = true;
   const payload = {
     nome, cpf, telefone: tel,
-    email: document.getElementById('v-email').value.trim(),
-    titulo,
-    tipo: document.getElementById('v-tipo').value,
-    escola: document.getElementById('v-escola').value.trim(),
-    zona: document.getElementById('v-zona').value.trim(),
-    secao: document.getElementById('v-secao').value.trim(),
-    endereco: document.getElementById('v-end').value.trim(),
+    email:       document.getElementById('v-email').value.trim(),
+    titulo:      document.getElementById('v-titulo').value.trim(),
+    tipo:        document.getElementById('v-tipo').value,
+    escola:      document.getElementById('v-escola').value.trim(),
+    zona:        document.getElementById('v-zona').value.trim(),
+    secao:       document.getElementById('v-secao').value.trim(),
+    endereco:    document.getElementById('v-end').value.trim(),
     observacoes: document.getElementById('v-obs').value.trim(),
     assessor_id: CU.id,
     atualizado_em: new Date().toISOString(),
@@ -932,7 +957,7 @@ async function saveVoter() {
       toast('Eleitor atualizado!');
     } else {
       const { error } = await sb.from('eleitores').insert(payload);
-      if(error) { if(error.code==='23505') { toast('CPF já cadastrado!','err'); return; } throw error; }
+      if(error) throw error;
       toast('Eleitor cadastrado!');
     }
     closeOv('ov-voter');
@@ -941,7 +966,10 @@ async function saveVoter() {
     renderDashboard();
     if(mapInited) refreshMarkers();
   } catch(e) {
-    toast('Erro ao salvar: '+e.message,'err');
+    if(e.code==='23505')      toast('CPF já cadastrado!','err');
+    else if(e.code==='23503') toast('Seu usuário não está mais válido no banco. Saia e entre novamente.','err');
+    else                      toast('Erro ao salvar: '+(e.message||'desconhecido'),'err');
+    console.error(e);
   } finally {
     btn.innerHTML = '💾 Salvar'; btn.disabled = false;
   }
@@ -995,14 +1023,13 @@ function openDetail(id) {
   openOv('ov-detail');
 }
 
+// ===== AUTOCOMPLETE DE ESCOLA =====
 function acEscola(inp) {
   const q = inp.value.toLowerCase();
-  document.getElementById('v-zona').value = '';
-  document.getElementById('v-secao').innerHTML = '<option value="">– Seção –</option>';
   const list = document.getElementById('ac-list');
-  if(q.length < 2) { list.style.display='none'; return; }
+  if(q.length < 2) { list.style.display = 'none'; return; }
   const m = ESCOLAS.filter(e=>e.n.toLowerCase().includes(q)).slice(0,8);
-  if(!m.length) { list.style.display='none'; return; }
+  if(!m.length) { list.style.display = 'none'; return; }
   list.innerHTML = m.map(e=>`<div class="ac-item" onclick="pickEscola(${JSON.stringify(e.n)})">
     <div class="ac-main">${e.n}</div>
     <div class="ac-sub">Zona ${e.z} · ${e.b}</div>
@@ -1014,21 +1041,20 @@ function pickEscola(nome) {
   const e = ESCOLAS.find(x=>x.n===nome);
   document.getElementById('v-escola').value = nome;
   document.getElementById('ac-list').style.display = 'none';
-  if(e) { document.getElementById('v-zona').value = e.z; populateSecoes(e.s,''); }
+  if(e) { document.getElementById('v-zona').value = e.z; populateSecoes(e.s, ''); }
 }
 
+// Preenche as sugestões de seção. Zona e seção continuam editáveis à mão.
 function populateSecoes(secoes, sel) {
-  document.getElementById('v-secao').innerHTML =
-    '<option value="">– Seção –</option>' +
-    secoes.map(s=>`<option value="${s}" ${s===sel?'selected':''}>${s}</option>`).join('');
+  document.getElementById('secoes-list').innerHTML = secoes.map(s=>`<option value="${s}">`).join('');
+  document.getElementById('v-secao').value = sel || '';
 }
 
 document.addEventListener('click', e => {
-  if(!e.target.closest('.ac-wrap')) document.getElementById('ac-list').style.display='none';
+  if(!e.target.closest('.ac-wrap')) document.getElementById('ac-list').style.display = 'none';
 });
 
-const BCOORDS = {"CENTRO":{lat:-23.461,lng:-46.533},"MACEDO":{lat:-23.454,lng:-46.521},"JARDIM PINHAL":{lat:-23.465,lng:-46.545},"JARDIM PARAVENTI":{lat:-23.470,lng:-46.548},"JARDIM ADRIANA":{lat:-23.472,lng:-46.554},"JARDIM COCAIA":{lat:-23.468,lng:-46.557},"JARDIM BOM CLIMA":{lat:-23.480,lng:-46.560},"PARQUE RENATO MAIA":{lat:-23.456,lng:-46.528},"JARDIM SAO PAULO":{lat:-23.467,lng:-46.540},"JARDIM SANTA CLARA":{lat:-23.464,lng:-46.552},"JARDIM VALERIA":{lat:-23.476,lng:-46.561},"VILA SAO JORGE":{lat:-23.452,lng:-46.538},"JARDIM DOS AFONSOS":{lat:-23.478,lng:-46.568},"VILA BREMEN":{lat:-23.449,lng:-46.530},"COCAIA":{lat:-23.469,lng:-46.558},"VILA PROGRESSO":{lat:-23.457,lng:-46.527},"PARQUE CECAP":{lat:-23.462,lng:-46.563},"VILA RIO DE JANEIRO":{lat:-23.453,lng:-46.515},"JARDIM NOVA CIDADE":{lat:-23.441,lng:-46.499},"CONJUNTO MARCOS FREIRE":{lat:-23.436,lng:-46.487},"JARDIM LEBLON":{lat:-23.447,lng:-46.494},"PARQUE JUREMA":{lat:-23.439,lng:-46.480},"JARDIM CENTENARIO":{lat:-23.444,lng:-46.491},"PARQUE DAS NACOES":{lat:-23.443,lng:-46.503},"CIDADE PARQUE ALVORADA":{lat:-23.432,lng:-46.475},"JARDIM GUARACY":{lat:-23.449,lng:-46.497},"JARDIM ARUJA":{lat:-23.434,lng:-46.502},"JARDIM JACY":{lat:-23.438,lng:-46.485},"PARQUE SAO MIGUEL":{lat:-23.446,lng:-46.496},"CIDADE ARACILIA":{lat:-23.430,lng:-46.470},"JARDIM SANTO AFONSO":{lat:-23.441,lng:-46.490},"PARQUE MARIA HELENA":{lat:-23.435,lng:-46.479},"GOPOUVA":{lat:-23.474,lng:-46.523},"JARDIM VILA GALVAO":{lat:-23.468,lng:-46.516},"JARDIM MUNHOZ":{lat:-23.480,lng:-46.531},"VILA SAO RAFAEL":{lat:-23.471,lng:-46.507},"PONTE GRANDE":{lat:-23.477,lng:-46.519},"JARDIM TRANQUILIDADE":{lat:-23.482,lng:-46.514},"VILA ENDRES":{lat:-23.485,lng:-46.508},"JARDIM DOURADO":{lat:-23.476,lng:-46.511},"VILA AUGUSTA":{lat:-23.469,lng:-46.499},"VILA DAS PALMEIRAS":{lat:-23.463,lng:-46.505},"JARDIM SANTA FRANCISCA":{lat:-23.458,lng:-46.510},"JARDIM SANTA RITA":{lat:-23.491,lng:-46.551},"JARDIM CAPRI":{lat:-23.486,lng:-46.556},"VILA NOSSA SENHORA DE FATIMA":{lat:-23.489,lng:-46.560},"VILA FLORIDA":{lat:-23.493,lng:-46.548},"PARQUE MIKAIL":{lat:-23.488,lng:-46.543},"PARQUE PRIMAVERA":{lat:-23.494,lng:-46.540},"JARDIM SAO DOMINGOS":{lat:-23.497,lng:-46.554},"JARDIM ALMEIDA PRADO":{lat:-23.500,lng:-46.547},"JARDIM AMERICA":{lat:-23.496,lng:-46.538},"JARDIM PARAISO":{lat:-23.499,lng:-46.535},"JARDIM NOVA TABOCO":{lat:-23.502,lng:-46.543},"JARDIM SANTA LIDIA":{lat:-23.492,lng:-46.558},"JARDIM TAMASSIA":{lat:-23.504,lng:-46.549},"VILA GALVAO":{lat:-23.510,lng:-46.523},"VILA ROSALIA":{lat:-23.514,lng:-46.519},"RECREIO SAO JORGE":{lat:-23.517,lng:-46.528},"JARDIM FLOR DA MONTANHA":{lat:-23.520,lng:-46.535},"JARDIM ALIANCA":{lat:-23.512,lng:-46.514},"JARDIM SANTA MENA":{lat:-23.507,lng:-46.530},"PARQUE CONTINENTAL III":{lat:-23.505,lng:-46.517},"PARQUE CONTINENTAL II":{lat:-23.508,lng:-46.520},"PARQUE CONTINENTAL IV":{lat:-23.503,lng:-46.515},"JARDIM ROSA DE FRANCA":{lat:-23.506,lng:-46.526},"JARDIM SAO LUIS":{lat:-23.511,lng:-46.516},"JARDIM MOREIRA":{lat:-23.513,lng:-46.533},"JARDIM BETEL":{lat:-23.516,lng:-46.512},"JARDIM LAS VEGAS":{lat:-23.519,lng:-46.539},"JARDIM PALMIRA":{lat:-23.509,lng:-46.537},"BONSUCESSO":{lat:-23.485,lng:-46.586},"PARQUE SANTOS DUMONT":{lat:-23.490,lng:-46.578},"VILA NOVA BONSUCESSO":{lat:-23.487,lng:-46.591},"JARDIM LENIZE":{lat:-23.493,lng:-46.583},"JARDIM SAO JOAO":{lat:-23.496,lng:-46.575},"PONTE ALTA":{lat:-23.500,lng:-46.568},"CONJUNTO HAROLDO VELOSO":{lat:-23.480,lng:-46.596},"CIDADE SOBERANA":{lat:-23.483,lng:-46.571},"JARDIM FORTALEZA":{lat:-23.478,lng:-46.564},"JARDIM SANTA TEREZINHA":{lat:-23.474,lng:-46.570},"CIDADE JARDIM CUMBICA":{lat:-23.424,lng:-46.461},"JARDIM MARIA DIRCE":{lat:-23.418,lng:-46.465},"JARDIM PRESIDENTE DUTRA":{lat:-23.413,lng:-46.453},"JARDIM CUMBICA":{lat:-23.421,lng:-46.458},"VILA NOVA CUMBICA":{lat:-23.427,lng:-46.455},"VILA PARAISO":{lat:-23.430,lng:-46.448},"RESIDENCIAL PARQUE CUMBICA":{lat:-23.415,lng:-46.469},"JARDIM DAS NACOES":{lat:-23.436,lng:-46.443},"JARDIM CASTANHA":{lat:-23.440,lng:-46.450},"PARQUE UIRAPURU":{lat:-23.417,lng:-46.459},"CONJUNTO INOCOOP":{lat:-23.409,lng:-46.455},"JARDIM OTTAWA":{lat:-23.443,lng:-46.462},"PRESIDENTE DUTRA":{lat:-23.410,lng:-46.460}};
-
+// ===== MAPA =====
 function getCoords(bairro) {
   if(!bairro) return null;
   const up = bairro.toUpperCase();
@@ -1040,7 +1066,7 @@ function getCoords(bairro) {
 
 function populateMapAssessorFilter() {
   const sel = document.getElementById('mf-assessor');
-  if(CU.role === 'admin') {
+  if(CU.role==='admin') {
     sel.style.display = 'block';
     const assessores = USERS.filter(u=>u.role==='assessor');
     sel.innerHTML = '<option value="">Todos os assessores</option>' +
@@ -1050,10 +1076,10 @@ function populateMapAssessorFilter() {
 }
 
 function populateMapZonaFilter() {
-  const zonas = [...new Set(VOTERS.map(v=>v.zona).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
   const sel = document.getElementById('mf-zona');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">Todas as zonas</option>' + zonas.map(z=>`<option value="${z}" ${z===cur?'selected':''}>${z}</option>`).join('');
+  sel.innerHTML = '<option value="">Todas as zonas</option>' +
+    allZonas().map(z=>`<option value="${z}"${z===cur?' selected':''}>${z}</option>`).join('');
 }
 
 function getLeaderIcon() {
@@ -1063,16 +1089,17 @@ function getLeaderIcon() {
 
 function initMap() {
   populateMapZonaFilter();
-  if(mapInited) { refreshMarkers(); return; }
+  if(mapInited) { refreshMarkers(); setTimeout(()=>leafMap.invalidateSize(), 120); return; }
   mapInited = true;
   leafMap = L.map('the-map').setView([-23.465,-46.513], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap'}).addTo(leafMap);
   refreshMarkers();
+  setTimeout(()=>leafMap.invalidateSize(), 200);
 }
 
 function refreshMarkers() {
   if(!leafMap) return;
-  mapMarkers.forEach(m => leafMap.removeLayer(m));
+  mapMarkers.forEach(m=>leafMap.removeLayer(m));
   mapMarkers = [];
   const fTipo = document.getElementById('mf-tipo')?.value || '';
   const fAss  = document.getElementById('mf-assessor')?.value || '';
@@ -1080,10 +1107,10 @@ function refreshMarkers() {
   let list = [...VOTERS];
   if(fTipo) list = list.filter(v=>v.tipo===fTipo);
   if(fAss)  list = list.filter(v=>v.assessor_id===fAss);
-  if(fZona) list = list.filter(v=>(v.zona||'')===fZona);
-  const countEl = document.getElementById('map-count');
-  if(countEl) countEl.textContent = `${list.length} exibido${list.length!==1?'s':''}`;
-  list.forEach(v => {
+  if(fZona) list = list.filter(v=>String(v.zona||'')===fZona);
+  const countEl = document.getElementById('map-counter');
+  if(countEl) countEl.textContent = `${list.length} ponto${list.length!==1?'s':''} no mapa`;
+  list.forEach(v=>{
     const escola = ESCOLAS.find(e=>e.n===v.escola);
     const coords = escola ? getCoords(escola.b) : getCoords(v.escola);
     if(!coords) return;
@@ -1091,7 +1118,7 @@ function refreshMarkers() {
     const an = getUName(v.assessor_id);
     const popup = `<div style="font-family:sans-serif;min-width:180px"><b style="font-size:14px">${v.nome}</b><br><span style="color:${v.tipo==='lider'?'#b8860b':'#007a38'};font-weight:600">${v.tipo==='lider'?'⭐ Liderança':'Eleitor'}</span><br><br>📍 Zona ${v.zona||'?'} · §${v.secao||'?'}<br>📞 ${v.telefone||'–'}<br>🏫 ${v.escola||'–'}<br>${v.endereco?'🏠 '+v.endereco+'<br>':''}👤 ${an}</div>`;
     let marker;
-    if(v.tipo === 'lider') {
+    if(v.tipo==='lider') {
       marker = L.marker(pos, {icon:getLeaderIcon()}).addTo(leafMap).bindPopup(popup);
     } else {
       marker = L.circleMarker(pos, {radius:8,fillColor:'#00c45a',color:'#fff',weight:2,opacity:1,fillOpacity:0.9}).addTo(leafMap).bindPopup(popup);
@@ -1100,14 +1127,17 @@ function refreshMarkers() {
   });
 }
 
+// ===== RELATÓRIOS =====
 function initRelatorios() {
-  const zonas = [...new Set(VOTERS.map(v=>v.zona).filter(Boolean))].sort((a,b)=>Number(a)-Number(b));
-  document.getElementById('r-zona').innerHTML = '<option value="">Todas as zonas</option>' + zonas.map(z=>`<option value="${z}">${z}</option>`).join('');
-  const bv = [...new Set(VOTERS.map(v=>{ const e=ESCOLAS.find(x=>x.n===v.escola); return e?e.b:null; }).filter(Boolean))].sort();
-  document.getElementById('r-bairro-vota').innerHTML = '<option value="">Todos os bairros</option>' + bv.map(b=>`<option value="${b}">${b}</option>`).join('');
+  document.getElementById('rf-zona').innerHTML = '<option value="">Todas as zonas</option>' +
+    allZonas().map(z=>`<option value="${z}">${z}</option>`).join('');
+  document.getElementById('rf-bairro-vota').innerHTML = '<option value="">Todos os bairros (votação)</option>' +
+    allBairrosVota().map(b=>`<option value="${b}">${b}</option>`).join('');
   if(CU.role==='admin') {
+    const sel = document.getElementById('rf-assessor');
+    sel.style.display = 'block';
     const av = USERS.filter(u=>u.role==='assessor');
-    document.getElementById('r-assessor').innerHTML = '<option value="">Todos os assessores</option>' +
+    sel.innerHTML = '<option value="">Todos os assessores</option>' +
       av.map(a=>`<option value="${a.id}">${a.nome}</option>`).join('') +
       `<option value="${CU.id}">${CU.nome} (admin)</option>`;
   }
@@ -1115,15 +1145,15 @@ function initRelatorios() {
 }
 
 function getRelatorioData() {
-  const fTipo  = document.getElementById('r-tipo').value;
-  const fAss   = document.getElementById('r-assessor')?.value || '';
-  const fZona  = document.getElementById('r-zona').value;
-  const fBVota = document.getElementById('r-bairro-vota').value.toLowerCase();
-  const fBRes  = (document.getElementById('r-bairro-res').value||'').toLowerCase();
+  const fTipo  = document.getElementById('rf-tipo').value;
+  const fAss   = document.getElementById('rf-assessor')?.value || '';
+  const fZona  = document.getElementById('rf-zona').value;
+  const fBVota = document.getElementById('rf-bairro-vota').value.toLowerCase();
+  const fBRes  = (document.getElementById('rf-bairro-res').value||'').toLowerCase();
   let list = [...VOTERS];
   if(fTipo)  list = list.filter(v=>v.tipo===fTipo);
   if(fAss)   list = list.filter(v=>v.assessor_id===fAss);
-  if(fZona)  list = list.filter(v=>(v.zona||'')===fZona);
+  if(fZona)  list = list.filter(v=>String(v.zona||'')===fZona);
   if(fBVota) list = list.filter(v=>getBairroVota(v).toLowerCase()===fBVota);
   if(fBRes)  list = list.filter(v=>(v.endereco||'').toLowerCase().includes(fBRes));
   return list;
@@ -1131,26 +1161,37 @@ function getRelatorioData() {
 
 function previewRelatorio() {
   const list = getRelatorioData();
-  document.getElementById('r-preview-count').textContent = `${list.length} registro${list.length!==1?'s':''} encontrado${list.length!==1?'s':''}`;
-  const el = document.getElementById('rel-preview');
-  if(!list.length) { el.innerHTML='<div class="empty" style="padding:20px"><div class="empty-icon" style="font-size:28px">🔍</div><p>Nenhum resultado</p></div>'; return; }
-  el.innerHTML = list.slice(0,50).map((v,i)=>{
-    const bVota = getBairroVota(v);
-    return `<div class="rel-row"><span class="rel-num">${i+1}</span><div style="flex:1"><div class="rel-name">${v.nome}</div><div class="rel-detail">Z.${v.zona||'–'} · ${bVota||'–'} · ${v.telefone||'–'} · ${getUName(v.assessor_id)}</div></div><span class="rel-badge ${v.tipo==='lider'?'vt-lider':'vt-eleitor'}">${v.tipo==='lider'?'⭐ L':'E'}</span></div>`;
-  }).join('') + (list.length>50?`<div style="text-align:center;padding:12px;font-size:12px;color:var(--text2)">... e mais ${list.length-50} registros (exportar para ver todos)</div>`:'');
+  document.getElementById('rel-preview-wrap').style.display = 'block';
+  document.getElementById('rel-preview-label').textContent =
+    `${list.length} registro${list.length!==1?'s':''} · ${buildRelatorioLabel()}`;
+  const tb = document.getElementById('rel-tbody');
+  if(!list.length) {
+    tb.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text2)">Nenhum resultado com esses filtros</td></tr>';
+    return;
+  }
+  tb.innerHTML = list.slice(0,50).map(v=>`<tr>
+    <td>${v.nome||'–'}</td>
+    <td>${v.tipo==='lider'?'⭐ Liderança':'Eleitor'}</td>
+    <td>${v.telefone||'–'}</td>
+    <td>${v.zona||'–'}</td>
+    <td>${v.secao||'–'}</td>
+    <td>${getBairroVota(v)||'–'}</td>
+    <td>${getUName(v.assessor_id)}</td>
+  </tr>`).join('');
 }
 
 function limparFiltrosRelatorio() {
-  ['r-tipo','r-assessor','r-zona','r-bairro-vota','r-bairro-res'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['rf-tipo','rf-assessor','rf-zona','rf-bairro-vota','rf-bairro-res']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   previewRelatorio();
 }
 
 function buildRelatorioLabel() {
-  const fTipo  = document.getElementById('r-tipo').value;
-  const fAss   = document.getElementById('r-assessor')?.value || '';
-  const fZona  = document.getElementById('r-zona').value;
-  const fBVota = document.getElementById('r-bairro-vota').value;
-  const fBRes  = document.getElementById('r-bairro-res')?.value||'';
+  const fTipo  = document.getElementById('rf-tipo').value;
+  const fAss   = document.getElementById('rf-assessor')?.value || '';
+  const fZona  = document.getElementById('rf-zona').value;
+  const fBVota = document.getElementById('rf-bairro-vota').value;
+  const fBRes  = document.getElementById('rf-bairro-res')?.value || '';
   const parts = [];
   if(fTipo)  parts.push(fTipo==='lider'?'Lideranças':'Eleitores');
   if(fAss)   parts.push('Assessor: '+getUName(fAss));
@@ -1163,13 +1204,25 @@ function buildRelatorioLabel() {
 function exportExcel() {
   const list = getRelatorioData();
   if(!list.length) { toast('Nenhum dado para exportar','err'); return; }
-  const rows = list.map((v,i) => ({'#':i+1,'Nome':v.nome||'','Tipo':v.tipo==='lider'?'Liderança':'Eleitor','CPF':v.cpf||'','Telefone':v.telefone||'','E-mail':v.email||'','Título':v.titulo||'','Zona':v.zona||'','Seção':v.secao||'','Colégio Eleitoral':v.escola||'','Bairro que Vota':getBairroVota(v),'Endereço Residencial':v.endereco||'','Assessor':getUName(v.assessor_id),'Observações':v.observacoes||'','Cadastrado em':v.criado_em?new Date(v.criado_em).toLocaleDateString('pt-BR'):''}));
+  const rows = list.map((v,i)=>({
+    '#':i+1,'Nome':v.nome||'','Tipo':v.tipo==='lider'?'Liderança':'Eleitor','CPF':v.cpf||'',
+    'Telefone':v.telefone||'','E-mail':v.email||'','Título':v.titulo||'','Zona':v.zona||'','Seção':v.secao||'',
+    'Colégio Eleitoral':v.escola||'','Bairro que Vota':getBairroVota(v),'Endereço Residencial':v.endereco||'',
+    'Assessor':getUName(v.assessor_id),'Observações':v.observacoes||'',
+    'Cadastrado em':v.criado_em?new Date(v.criado_em).toLocaleDateString('pt-BR'):''
+  }));
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [{wch:4},{wch:35},{wch:12},{wch:14},{wch:15},{wch:28},{wch:14},{wch:7},{wch:7},{wch:40},{wch:28},{wch:40},{wch:25},{wch:50},{wch:14}];
   XLSX.utils.book_append_sheet(wb, ws, 'Eleitores');
-  const label = buildRelatorioLabel();
-  const ws2 = XLSX.utils.aoa_to_sheet([['Relatório Eleitoral – Danilo Gomes'],['Gerado em:',new Date().toLocaleString('pt-BR')],['Filtros:',label],['Total:',list.length],['Lideranças:',list.filter(v=>v.tipo==='lider').length],['Eleitores:',list.filter(v=>v.tipo==='eleitor').length]]);
+  const ws2 = XLSX.utils.aoa_to_sheet([
+    ['Relatório Eleitoral – Danilo Gomes'],
+    ['Gerado em:', new Date().toLocaleString('pt-BR')],
+    ['Filtros:', buildRelatorioLabel()],
+    ['Total:', list.length],
+    ['Lideranças:', list.filter(v=>v.tipo==='lider').length],
+    ['Eleitores:', list.filter(v=>v.tipo==='eleitor').length]
+  ]);
   XLSX.utils.book_append_sheet(wb, ws2, 'Resumo');
   XLSX.writeFile(wb, `relatorio_eleitoral_${new Date().toISOString().slice(0,10)}.xlsx`);
   toast('Excel exportado!');
@@ -1185,6 +1238,7 @@ function exportPDF() {
   doc.setTextColor(255,255,255); doc.setFontSize(14); doc.setFont(undefined,'bold');
   doc.text('Danilo Gomes · Relatório Eleitoral · Guarulhos',10,13);
   doc.setFontSize(9); doc.setFont(undefined,'normal');
+  doc.setTextColor(60,60,60);
   doc.text(`Filtros: ${label}`,10,25);
   doc.setTextColor(100,100,100);
   doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')} · ${list.length} registro(s)`,10,31);
@@ -1202,6 +1256,7 @@ function exportPDF() {
   toast('PDF exportado!');
 }
 
+// ===== PERFIL =====
 function renderPerfil() {
   const ini = CU.nome.split(' ').map(x=>x[0]).slice(0,2).join('');
   document.getElementById('prof-header').innerHTML = `
@@ -1228,6 +1283,7 @@ async function trocarSenha() {
   toast('Senha alterada com sucesso!');
 }
 
+// ===== ASSESSORES =====
 async function openManageUsers() {
   const { data } = await sb.from('usuarios').select('*').order('nome');
   USERS = data || [];
@@ -1238,18 +1294,25 @@ async function openManageUsers() {
 function renderUM() {
   const list = USERS.filter(u=>u.role==='assessor');
   document.getElementById('um-list').innerHTML = list.length
-    ? list.map(u=>{ const cnt=VOTERS.filter(v=>v.assessor_id===u.id).length; const l=VOTERS.filter(v=>v.assessor_id===u.id&&v.tipo==='lider').length; return `<div class="um-item"><div><div class="um-name">${u.nome}</div><div class="um-login">@${u.login} · ${cnt} cadastros · ⭐ ${l} lideranças</div></div><button class="btn btn-danger btn-sm" onclick="removeUser('${u.id}')">Remover</button></div>`; }).join('')
+    ? list.map(u=>{
+        const cnt = VOTERS.filter(v=>v.assessor_id===u.id).length;
+        const l   = VOTERS.filter(v=>v.assessor_id===u.id && v.tipo==='lider').length;
+        return `<div class="um-item"><div><div class="um-name">${u.nome}</div><div class="um-login">@${u.login} · ${cnt} cadastros · ⭐ ${l} lideranças</div></div><button class="btn btn-danger btn-sm" onclick="removeUser('${u.id}')">Remover</button></div>`;
+      }).join('')
     : '<div style="color:var(--text2);font-size:13px;margin-bottom:12px">Nenhum assessor cadastrado</div>';
 }
 
 async function addUser() {
-  const nome=document.getElementById('nu-nome').value.trim(),login=document.getElementById('nu-login').value.trim(),pass=document.getElementById('nu-pass').value.trim();
+  const nome  = document.getElementById('nu-nome').value.trim();
+  const login = document.getElementById('nu-login').value.trim();
+  const pass  = document.getElementById('nu-pass').value.trim();
   if(!nome||!login||!pass) { toast('Preencha todos os campos','err'); return; }
-  const { error } = await sb.from('usuarios').insert({nome,login,senha:pass,role:'assessor'});
+  const { error } = await sb.from('usuarios').insert({nome, login, senha:pass, role:'assessor'});
   if(error) { toast(error.code==='23505'?'Login já existe':'Erro ao criar usuário','err'); return; }
   ['nu-nome','nu-login','nu-pass'].forEach(id=>document.getElementById(id).value='');
   const { data } = await sb.from('usuarios').select('*').order('nome');
-  USERS=data||[]; renderUM(); renderDashboard(); populateMapAssessorFilter();
+  USERS = data || [];
+  renderUM(); renderDashboard(); populateMapAssessorFilter();
   toast('Assessor criado!');
 }
 
@@ -1257,15 +1320,17 @@ async function removeUser(id) {
   if(!confirm('Remover este assessor? Os eleitores cadastrados por ele serão mantidos.')) return;
   const { error } = await sb.from('usuarios').delete().eq('id', id);
   if(error) { toast('Erro ao remover','err'); return; }
-  USERS=USERS.filter(u=>u.id!==id); renderUM(); renderDashboard(); populateMapAssessorFilter();
+  USERS = USERS.filter(u=>u.id!==id);
+  renderUM(); renderDashboard(); populateMapAssessorFilter();
   toast('Assessor removido');
 }
 
-function openOv(id) { document.getElementById(id).classList.add('open'); }
+// ===== UTILITÁRIOS =====
+function openOv(id)  { document.getElementById(id).classList.add('open'); }
 function closeOv(id) { document.getElementById(id).classList.remove('open'); }
 
-document.querySelectorAll('.overlay').forEach(o => {
-  o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); });
+document.querySelectorAll('.overlay').forEach(o=>{
+  o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('open'); });
 });
 
 function toast(msg, type='') {
@@ -1274,23 +1339,23 @@ function toast(msg, type='') {
   t.className = 'toast' + (type?' '+type:'');
   t.classList.add('on');
   clearTimeout(t._t);
-  t._t = setTimeout(()=>t.classList.remove('on'), 3000);
+  t._t = setTimeout(()=>t.classList.remove('on'), 3500);
 }
 
 function mCPF(el) {
   let v = el.value.replace(/\D/g,'').slice(0,11);
-  if(v.length>9) v=v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6,9)+'-'+v.slice(9);
-  else if(v.length>6) v=v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6);
-  else if(v.length>3) v=v.slice(0,3)+'.'+v.slice(3);
-  el.value=v;
+  if(v.length>9) v = v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6,9)+'-'+v.slice(9);
+  else if(v.length>6) v = v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6);
+  else if(v.length>3) v = v.slice(0,3)+'.'+v.slice(3);
+  el.value = v;
 }
 
 function mTel(el) {
   let v = el.value.replace(/\D/g,'').slice(0,11);
-  if(v.length>10) v='('+v.slice(0,2)+') '+v.slice(2,7)+'-'+v.slice(7);
-  else if(v.length>6) v='('+v.slice(0,2)+') '+v.slice(2,6)+'-'+v.slice(6);
-  else if(v.length>2) v='('+v.slice(0,2)+') '+v.slice(2);
-  el.value=v;
+  if(v.length>10) v = '('+v.slice(0,2)+') '+v.slice(2,7)+'-'+v.slice(7);
+  else if(v.length>6) v = '('+v.slice(0,2)+') '+v.slice(2,6)+'-'+v.slice(6);
+  else if(v.length>2) v = '('+v.slice(0,2)+') '+v.slice(2);
+  el.value = v;
 }
 </script>
 </body>
